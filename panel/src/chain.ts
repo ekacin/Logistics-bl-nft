@@ -1,9 +1,19 @@
 import { Program, type Provider } from '@anchor-lang/core';
-import { Connection, PublicKey } from '@solana/web3.js';
-import idl from './idl/logistics_bl_nft.json';
+import {
+  ASSOCIATED_TOKEN_PROGRAM_ID,
+  TOKEN_PROGRAM_ID,
+  createAssociatedTokenAccountInstruction,
+  createTransferInstruction,
+  getAssociatedTokenAddressSync,
+} from '@solana/spl-token';
+import { Connection, Keypair, PublicKey, SystemProgram, Transaction, type TransactionInstruction } from '@solana/web3.js';
+import idl from './idl/logistics_bl_nft.json' with { type: 'json' };
 import type { LogisticsBlNft } from './idl/logistics_bl_nft';
 
-export const DEVNET_RPC = import.meta.env.VITE_RPC_URL ?? 'https://api.devnet.solana.com';
+// import.meta.env Vite'a özgü — bu dosya smoke-test script'i tarafından düz Node'da da
+// import edildiği için güvenli erişim (Vite dışında import.meta.env tanımsız olabilir).
+const viteEnv = (import.meta as unknown as { env?: Record<string, string | undefined> }).env;
+export const DEVNET_RPC = viteEnv?.VITE_RPC_URL ?? 'https://api.devnet.solana.com';
 
 export const PROGRAM_ID = new PublicKey((idl as { address: string }).address);
 
@@ -24,8 +34,9 @@ export function deriveSurrenderRequest(mint: PublicKey): [PublicKey, number] {
 }
 
 /** Salt okunur Program örneği — imza gerekmez, sadece connection yeterli (Provider
- * arayüzünde wallet/publicKey opsiyonel, bkz. @anchor-lang/core/provider.d.ts). Yazma
- * işlemleri için chain-write.ts kendi provider'ını (Phantom ile) kurar. */
+ * arayüzünde wallet/publicKey opsiyonel, bkz. @anchor-lang/core/provider.d.ts).
+ * `.instruction()` ile ix kurmak için de yeterli — asıl imza aşağıdaki sendTx'te,
+ * WalletLike (Phantom ya da test Keypair'i) üzerinden olur. */
 export function getReadOnlyProgram(connection: Connection): Program<LogisticsBlNft> {
   const provider: Provider = { connection };
   return new Program(idl as LogisticsBlNft, provider);
@@ -93,4 +104,167 @@ export function watchBlState(connection: Connection, mint: PublicKey, onChange: 
   return () => {
     void connection.removeAccountChangeListener(subId);
   };
+}
+
+// ---- yazma katmanı ----
+// Hem Phantom (window.phantom.solana) hem de smoke-test'teki düz bir Keypair bu şekle
+// uyar — ikisi de "publicKey + signTransaction" sağlıyor, chain.ts hangisiyle
+// çağrıldığını bilmek zorunda değil.
+export interface WalletLike {
+  publicKey: PublicKey;
+  signTransaction<T extends Transaction>(tx: T): Promise<T>;
+}
+
+/** Düz bir Keypair'i WalletLike'a çevirir — sadece smoke test ve demo script'leri için,
+ * UI hiç kullanmaz (UI her zaman gerçek Phantom'u kullanır). */
+export function walletFromKeypair(kp: Keypair): WalletLike {
+  return {
+    publicKey: kp.publicKey,
+    async signTransaction<T extends Transaction>(tx: T): Promise<T> {
+      tx.partialSign(kp);
+      return tx;
+    },
+  };
+}
+
+async function sendTx(
+  connection: Connection,
+  wallet: WalletLike,
+  ixs: TransactionInstruction[],
+  extraSigners: Keypair[] = []
+): Promise<string> {
+  const tx = new Transaction().add(...ixs);
+  tx.feePayer = wallet.publicKey;
+  const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
+  tx.recentBlockhash = blockhash;
+  for (const kp of extraSigners) tx.partialSign(kp);
+  const signed = await wallet.signTransaction(tx);
+  const signature = await connection.sendRawTransaction(signed.serialize());
+  await connection.confirmTransaction({ signature, blockhash, lastValidBlockHeight }, 'confirmed');
+  return signature;
+}
+
+/** Carrier çağırır. Mint taze bir Keypair — Phantom onu imzalayamaz, bu yüzden
+ * `extraSigners`'a verilip `sendTx` içinde `partialSign` ile yerel (popup'sız)
+ * imzalanıyor; Phantom sadece carrier'ın kendi imzasını atıyor (dış inceleme notu). */
+export async function issueBl(
+  connection: Connection,
+  wallet: WalletLike,
+  shipper: PublicKey
+): Promise<{ mint: PublicKey; signature: string }> {
+  const program = getReadOnlyProgram(connection);
+  const mint = Keypair.generate();
+  const [blState] = deriveBlState(mint.publicKey);
+  const shipperAta = getAssociatedTokenAddressSync(mint.publicKey, shipper);
+
+  const ix = await program.methods
+    .issueBl()
+    .accountsPartial({
+      carrier: wallet.publicKey,
+      shipper,
+      mint: mint.publicKey,
+      shipperAta,
+      blState,
+      tokenProgram: TOKEN_PROGRAM_ID,
+      associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+      systemProgram: SystemProgram.programId,
+    })
+    .instruction();
+
+  const signature = await sendTx(connection, wallet, [ix], [mint]);
+  return { mint: mint.publicKey, signature };
+}
+
+/** Düz SPL transfer — custom instruction değil (mimari-spec.md #7). Şu an token'ı
+ * tutan taraf çağırır. Alıcının ATA'sı yoksa aynı transaction'a ekleniyor (dış
+ * inceleme notu — endorse'da bu adım eksikse transfer patlar). */
+export async function endorse(connection: Connection, wallet: WalletLike, mint: PublicKey, to: PublicKey): Promise<string> {
+  const fromAta = getAssociatedTokenAddressSync(mint, wallet.publicKey);
+  const toAta = getAssociatedTokenAddressSync(mint, to);
+  const ixs: TransactionInstruction[] = [];
+  const toInfo = await connection.getAccountInfo(toAta);
+  if (!toInfo) {
+    ixs.push(createAssociatedTokenAccountInstruction(wallet.publicKey, toAta, to, mint));
+  }
+  ixs.push(createTransferInstruction(fromAta, toAta, wallet.publicKey, 1));
+  return sendTx(connection, wallet, ixs);
+}
+
+/** Buyer çağırır — token'ı mint'e özel vault PDA'ya kilitler. */
+export async function requestSurrender(connection: Connection, wallet: WalletLike, mint: PublicKey): Promise<string> {
+  const program = getReadOnlyProgram(connection);
+  const buyerAta = getAssociatedTokenAddressSync(mint, wallet.publicKey);
+  const [vault] = deriveVault(mint);
+  const [blState] = deriveBlState(mint);
+  const [surrenderRequest] = deriveSurrenderRequest(mint);
+
+  const ix = await program.methods
+    .requestSurrender()
+    .accountsPartial({
+      buyer: wallet.publicKey,
+      mint,
+      buyerAta,
+      vault,
+      blState,
+      surrenderRequest,
+      tokenProgram: TOKEN_PROGRAM_ID,
+      systemProgram: SystemProgram.programId,
+    })
+    .instruction();
+
+  return sendTx(connection, wallet, [ix]);
+}
+
+/** Carrier çağırır — has_one=carrier kontrolü zincirde. Vault'taki token burn edilir. */
+export async function processSurrender(connection: Connection, wallet: WalletLike, mint: PublicKey): Promise<string> {
+  const sr = await fetchSurrenderRequest(connection, mint);
+  if (!sr) throw new Error('Surrender request bulunamadı — önce request_surrender çağrılmış olmalı.');
+  const program = getReadOnlyProgram(connection);
+  const [blState] = deriveBlState(mint);
+  const [vault] = deriveVault(mint);
+  const [surrenderRequest] = deriveSurrenderRequest(mint);
+
+  const ix = await program.methods
+    .processSurrender()
+    .accountsPartial({
+      carrier: wallet.publicKey,
+      blState,
+      buyer: sr.buyer,
+      mint,
+      vault,
+      surrenderRequest,
+      tokenProgram: TOKEN_PROGRAM_ID,
+    })
+    .instruction();
+
+  return sendTx(connection, wallet, [ix]);
+}
+
+/** Permissionless — kim çağırırsa çağırsın (mimari-spec.md 9b). `wallet` sadece tx
+ * ücretini öder, hiçbir rol kısıtı yok; buyer_ata surrender_request.buyer'dan
+ * türetiliyor, caller'ın geçtiği ham bir hesap değil. */
+export async function refundSurrenderTimeout(connection: Connection, wallet: WalletLike, mint: PublicKey): Promise<string> {
+  const sr = await fetchSurrenderRequest(connection, mint);
+  if (!sr) throw new Error('Surrender request bulunamadı — önce request_surrender çağrılmış olmalı.');
+  const program = getReadOnlyProgram(connection);
+  const [blState] = deriveBlState(mint);
+  const [vault] = deriveVault(mint);
+  const [surrenderRequest] = deriveSurrenderRequest(mint);
+  const buyerAta = getAssociatedTokenAddressSync(mint, sr.buyer);
+
+  const ix = await program.methods
+    .refundSurrenderTimeout()
+    .accountsPartial({
+      caller: wallet.publicKey,
+      mint,
+      blState,
+      surrenderRequest,
+      buyer: sr.buyer,
+      vault,
+      buyerAta,
+      tokenProgram: TOKEN_PROGRAM_ID,
+    })
+    .instruction();
+
+  return sendTx(connection, wallet, [ix]);
 }
