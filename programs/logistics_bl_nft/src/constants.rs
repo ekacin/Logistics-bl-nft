@@ -1,10 +1,14 @@
 use anchor_lang::prelude::*;
 
 #[constant]
-pub const COUNTER_SEED: &[u8] = b"counter";
+pub const BL_STATE_SEED: &[u8] = b"bl_state";
 
 #[constant]
-pub const HELLO_WORLD_LAMPORTS: u64 = 1;
+pub const VAULT_SEED: &[u8] = b"vault";
 
 #[constant]
-pub const MAX_COUNT: u64 = 10;
+pub const SURRENDER_REQUEST_SEED: &[u8] = b"surrender_request";
+
+// Demo için kısa tutuldu (15sn) — üretimde gün mertebesinde olur (pitch caveat).
+#[constant]
+pub const SURRENDER_WINDOW: i64 = 15;
