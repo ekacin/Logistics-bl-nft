@@ -1,5 +1,5 @@
 use anchor_lang::prelude::*;
-use anchor_spl::token::{self, Burn, Mint, Token, TokenAccount};
+use anchor_spl::token::{self, Burn, CloseAccount, Mint, Token, TokenAccount};
 
 use crate::constants::*;
 use crate::error::ErrorCode;
@@ -63,6 +63,21 @@ pub fn handle_process_surrender(ctx: Context<ProcessSurrender>) -> Result<()> {
         signer_seeds,
     );
     token::burn(cpi_ctx, 1)?;
+
+    // Terminal durumda (Redeemed) zorunlu değil ama ucuz bir iyi alışkanlık — vault'u
+    // açık bırakmak yerine kapatıp rent'i buyer'a iade ediyoruz (dış inceleme notu,
+    // refund_surrender_timeout'taki zorunlu düzeltmeyle tutarlılık için).
+    let close_accounts = CloseAccount {
+        account: ctx.accounts.vault.to_account_info(),
+        destination: ctx.accounts.buyer.to_account_info(),
+        authority: ctx.accounts.vault.to_account_info(),
+    };
+    let close_ctx = CpiContext::new_with_signer(
+        ctx.accounts.token_program.key(),
+        close_accounts,
+        signer_seeds,
+    );
+    token::close_account(close_ctx)?;
 
     ctx.accounts.bl_state.status = Status::Redeemed;
 

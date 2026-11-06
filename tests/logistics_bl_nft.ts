@@ -166,5 +166,78 @@ describe("logistics_bl_nft — çekirdek B/L akışı", () => {
 
     const buyerAccount = await getAccount(connection, buyerAta);
     expect(buyerAccount.amount.toString()).to.equal("1");
+
+    // Dış inceleme bulgusu: refund'dan sonra vault kapatılmazsa B/L kalıcı olarak
+    // kilitlenir — ikinci bir ibraz denemesi "already in use" ile patlar. Spec'in
+    // "belge iptal olmuyor, tekrar ibraz edilebilir" iddiasını BUNU deneyerek kanıtla,
+    // sadece ilk refund'da durmak yetmez (eski test suite'in kaçırdığı tam da buydu).
+    await requestSurrender(mint.publicKey);
+    const stateAfterSecondRequest = await program.account.billOfLadingState.fetch(blState);
+    expect(Object.keys(stateAfterSecondRequest.status)[0]).to.equal("surrenderRequested");
+  });
+
+  it("Negatif: ilgisiz bir cüzdan process_surrender çağırırsa has_one=carrier ile patlar", async () => {
+    const mint = Keypair.generate();
+    await issueBl(mint);
+    await endorseToBuyer(mint.publicKey);
+    await requestSurrender(mint.publicKey);
+
+    const { blState, vault, surrenderRequest } = deriveAddresses(mint.publicKey);
+    const impostor = Keypair.generate();
+    await airdrop(connection, impostor.publicKey, 1);
+
+    let threw = false;
+    try {
+      await program.methods
+        .processSurrender()
+        .accountsPartial({
+          carrier: impostor.publicKey,
+          blState,
+          buyer: buyer.publicKey,
+          mint: mint.publicKey,
+          vault,
+          surrenderRequest,
+          tokenProgram: TOKEN_PROGRAM_ID,
+        })
+        .signers([impostor])
+        .rpc();
+    } catch (err) {
+      threw = true;
+      expect((err as Error).toString()).to.match(/ConstraintHasOne|has_one|2001/);
+    }
+    expect(threw, "impostor'un process_surrender çağırması BAŞARILI olmamalıydı").to.equal(true);
+  });
+
+  it("Negatif: deadline dolmadan refund_surrender_timeout çağrılırsa patlar", async () => {
+    const mint = Keypair.generate();
+    await issueBl(mint);
+    await endorseToBuyer(mint.publicKey);
+    await requestSurrender(mint.publicKey);
+
+    const { blState, vault, surrenderRequest, buyerAta } = deriveAddresses(mint.publicKey);
+    const randomCaller = Keypair.generate();
+    await airdrop(connection, randomCaller.publicKey, 1);
+
+    let threw = false;
+    try {
+      await program.methods
+        .refundSurrenderTimeout()
+        .accountsPartial({
+          caller: randomCaller.publicKey,
+          mint: mint.publicKey,
+          blState,
+          surrenderRequest,
+          buyer: buyer.publicKey,
+          vault,
+          buyerAta,
+          tokenProgram: TOKEN_PROGRAM_ID,
+        })
+        .signers([randomCaller])
+        .rpc();
+    } catch (err) {
+      threw = true;
+      expect((err as Error).toString()).to.match(/DeadlineNotReached|6001/);
+    }
+    expect(threw, "deadline dolmadan refund BAŞARILI olmamalıydı").to.equal(true);
   });
 });

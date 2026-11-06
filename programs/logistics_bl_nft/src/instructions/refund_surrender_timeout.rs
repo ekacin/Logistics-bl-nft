@@ -1,5 +1,5 @@
 use anchor_lang::prelude::*;
-use anchor_spl::token::{self, Mint, Token, TokenAccount, Transfer};
+use anchor_spl::token::{self, CloseAccount, Mint, Token, TokenAccount, Transfer};
 
 use crate::constants::*;
 use crate::error::ErrorCode;
@@ -75,6 +75,24 @@ pub fn handle_refund_surrender_timeout(ctx: Context<RefundSurrenderTimeout>) -> 
         signer_seeds,
     );
     token::transfer(cpi_ctx, 1)?;
+
+    // vault'un ömrü surrender_request ile simetrik olsun — "vault sadece ibraz askıdayken
+    // var" (dış inceleme bulgusu: bunsuz vault boş ama AÇIK kalıyor, bir sonraki
+    // request_surrender aynı PDA'yı `init` etmeye çalışıp "already in use" ile patlıyor,
+    // yani refund sonrası B/L kalıcı olarak kilitleniyor — spec'in "tekrar ibraz
+    // edilebilir" iddiasını kırıyordu). `#[account(close=...)]` SPL token hesapları için
+    // çalışmaz (sahibi Token programı) — açık bir CPI gerekiyor. Rent de buyer'a döner.
+    let close_accounts = CloseAccount {
+        account: ctx.accounts.vault.to_account_info(),
+        destination: ctx.accounts.buyer.to_account_info(),
+        authority: ctx.accounts.vault.to_account_info(),
+    };
+    let close_ctx = CpiContext::new_with_signer(
+        ctx.accounts.token_program.key(),
+        close_accounts,
+        signer_seeds,
+    );
+    token::close_account(close_ctx)?;
 
     ctx.accounts.bl_state.status = Status::Issued;
 
