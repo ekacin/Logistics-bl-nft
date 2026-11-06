@@ -58,7 +58,7 @@ pub fn handle_process_surrender(ctx: Context<ProcessSurrender>) -> Result<()> {
         authority: ctx.accounts.vault.to_account_info(),
     };
     let cpi_ctx = CpiContext::new_with_signer(
-        ctx.accounts.token_program.to_account_info(),
+        ctx.accounts.token_program.key(),
         cpi_accounts,
         signer_seeds,
     );

@@ -56,7 +56,7 @@ pub fn handle_request_surrender(ctx: Context<RequestSurrender>) -> Result<()> {
         to: ctx.accounts.vault.to_account_info(),
         authority: ctx.accounts.buyer.to_account_info(),
     };
-    let cpi_ctx = CpiContext::new(ctx.accounts.token_program.to_account_info(), cpi_accounts);
+    let cpi_ctx = CpiContext::new(ctx.accounts.token_program.key(), cpi_accounts);
     token::transfer(cpi_ctx, 1)?;
 
     let clock = Clock::get()?;

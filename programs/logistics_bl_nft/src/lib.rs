@@ -15,11 +15,19 @@ declare_id!("Cv8LVQWVR6t59hPQfSyf9LmFsG9ueouz5iZKfiNJV7nN");
 pub mod logistics_bl_nft {
     use super::*;
 
-    pub fn initialize(ctx: Context<Initialize>) -> Result<()> {
-        crate::instructions::initialize::handle_initialize(ctx)
+    pub fn issue_bl(ctx: Context<IssueBl>) -> Result<()> {
+        crate::instructions::issue_bl::handle_issue_bl(ctx)
     }
 
-    pub fn increment(ctx: Context<Increment>) -> Result<()> {
-        crate::instructions::increment::handle_increment(ctx)
+    pub fn request_surrender(ctx: Context<RequestSurrender>) -> Result<()> {
+        crate::instructions::request_surrender::handle_request_surrender(ctx)
+    }
+
+    pub fn process_surrender(ctx: Context<ProcessSurrender>) -> Result<()> {
+        crate::instructions::process_surrender::handle_process_surrender(ctx)
+    }
+
+    pub fn refund_surrender_timeout(ctx: Context<RefundSurrenderTimeout>) -> Result<()> {
+        crate::instructions::refund_surrender_timeout::handle_refund_surrender_timeout(ctx)
     }
 }

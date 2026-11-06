@@ -70,7 +70,7 @@ pub fn handle_refund_surrender_timeout(ctx: Context<RefundSurrenderTimeout>) -> 
         authority: ctx.accounts.vault.to_account_info(),
     };
     let cpi_ctx = CpiContext::new_with_signer(
-        ctx.accounts.token_program.to_account_info(),
+        ctx.accounts.token_program.key(),
         cpi_accounts,
         signer_seeds,
     );

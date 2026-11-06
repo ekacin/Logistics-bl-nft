@@ -52,7 +52,7 @@ pub fn handle_issue_bl(ctx: Context<IssueBl>) -> Result<()> {
         to: ctx.accounts.shipper_ata.to_account_info(),
         authority: ctx.accounts.carrier.to_account_info(),
     };
-    let cpi_ctx = CpiContext::new(ctx.accounts.token_program.to_account_info(), cpi_accounts);
+    let cpi_ctx = CpiContext::new(ctx.accounts.token_program.key(), cpi_accounts);
     token::mint_to(cpi_ctx, 1)?;
 
     // Güvenlik madde 2: mint authority iptal — "tek adetlik NFT" garantisi.
@@ -60,7 +60,7 @@ pub fn handle_issue_bl(ctx: Context<IssueBl>) -> Result<()> {
         current_authority: ctx.accounts.carrier.to_account_info(),
         account_or_mint: ctx.accounts.mint.to_account_info(),
     };
-    let cpi_ctx = CpiContext::new(ctx.accounts.token_program.to_account_info(), cpi_accounts);
+    let cpi_ctx = CpiContext::new(ctx.accounts.token_program.key(), cpi_accounts);
     token::set_authority(cpi_ctx, AuthorityType::MintTokens, None)?;
 
     // Güvenlik madde 3: freeze authority iptal — Carrier, Buyer hesabını baskı aracı yapamaz.
@@ -68,7 +68,7 @@ pub fn handle_issue_bl(ctx: Context<IssueBl>) -> Result<()> {
         current_authority: ctx.accounts.carrier.to_account_info(),
         account_or_mint: ctx.accounts.mint.to_account_info(),
     };
-    let cpi_ctx = CpiContext::new(ctx.accounts.token_program.to_account_info(), cpi_accounts);
+    let cpi_ctx = CpiContext::new(ctx.accounts.token_program.key(), cpi_accounts);
     token::set_authority(cpi_ctx, AuthorityType::FreezeAccount, None)?;
 
     let bl_state = &mut ctx.accounts.bl_state;
