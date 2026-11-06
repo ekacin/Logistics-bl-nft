@@ -136,8 +136,8 @@ describe("logistics_bl_nft — çekirdek B/L akışı", () => {
     await endorseToBuyer(mint.publicKey);
     await requestSurrender(mint.publicKey);
 
-    // SURRENDER_WINDOW = 15sn (constants.rs) — deadline'ın kesin geçmesi için 17sn bekle.
-    await sleep(17_000);
+    // SURRENDER_WINDOW = 30sn (constants.rs) — deadline'ın kesin geçmesi için 32sn bekle.
+    await sleep(32_000);
 
     const { blState, vault, surrenderRequest, buyerAta } = deriveAddresses(mint.publicKey);
 

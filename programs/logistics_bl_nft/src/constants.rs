@@ -9,6 +9,6 @@ pub const VAULT_SEED: &[u8] = b"vault";
 #[constant]
 pub const SURRENDER_REQUEST_SEED: &[u8] = b"surrender_request";
 
-// Demo için kısa tutuldu (15sn) — üretimde gün mertebesinde olur (pitch caveat).
+// Demo için kısa tutuldu (30sn) — üretimde gün mertebesinde olur (pitch caveat).
 #[constant]
-pub const SURRENDER_WINDOW: i64 = 15;
+pub const SURRENDER_WINDOW: i64 = 30;
