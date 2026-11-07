@@ -85,12 +85,12 @@ const App: React.FC = () => {
                 className={`btn btn-sm ${view === 'approveDraft' ? 'btn-primary' : ''}`}
                 onClick={() => setView('approveDraft')}
               >
-                Approve Draft
+                Draft Status
               </button>
             </nav>
-            {view === 'issue' && <IssueBl wallet={wallet} onIssued={(mint) => setOpenedMint(mint)} />}
+            {view === 'issue' && <IssueBl wallet={wallet} />}
             {view === 'track' && <TrackBl onOpen={(mint) => setOpenedMint(mint)} />}
-            {view === 'approveDraft' && <DraftStatus wallet={wallet} />}
+            {view === 'approveDraft' && <DraftStatus wallet={wallet} onIssued={(mint) => setOpenedMint(mint)} />}
           </>
         )}
       </main>

@@ -1,102 +1,29 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { PublicKey } from '@solana/web3.js';
 import type { WalletState } from '../wallet';
-import {
-  type DraftState,
-  cancelDraft,
-  createDraft,
-  fetchDraft,
-  getConnection,
-  issueBl,
-  watchDraft,
-  type WalletLike,
-} from '../chain';
+import { createDraft, getConnection, type WalletLike } from '../chain';
 
 interface IssueBlProps {
   wallet: WalletState;
-  onIssued: (mint: PublicKey) => void;
 }
 
-// Carrier başka bir nav sekmesine geçince (örn. Approve Draft) bu bileşen unmount
-// oluyor — sayfa yenilense bile taslak unutulmasın diye cüzdana özel localStorage
-// kaydı tutuluyor (yalnızca bu tarayıcıdaki kullanım kolaylığı için, zincirdeki
-// gerçek durumun yerine geçmiyor — watchDraft/fetchDraft hâlâ tek doğruluk kaynağı).
-function pendingDraftKey(carrier: PublicKey): string {
-  return `bl_nft_pending_draft::${carrier.toBase58()}`;
-}
-
-function loadPendingDraft(carrier: PublicKey): { shipper: string; draft: string } | null {
-  try {
-    const raw = localStorage.getItem(pendingDraftKey(carrier));
-    return raw ? JSON.parse(raw) : null;
-  } catch {
-    return null;
-  }
-}
-
-function savePendingDraft(carrier: PublicKey, shipper: string, draft: PublicKey) {
-  try {
-    localStorage.setItem(pendingDraftKey(carrier), JSON.stringify({ shipper, draft: draft.toBase58() }));
-  } catch {
-    /* localStorage kullanılamıyorsa sessizce yok say — sadece kolaylık */
-  }
-}
-
-function clearPendingDraft(carrier: PublicKey) {
-  try {
-    localStorage.removeItem(pendingDraftKey(carrier));
-  } catch {
-    /* yok say */
-  }
-}
-
-/** Onay kapısı: issue_bl artık carrier'ın tek başına çağırabileceği bir işlem değil —
- * önce create_draft (carrier), sonra approve_draft (shipper, kendi imzasıyla) gerekiyor.
- * Bu yüzden sayfa iki aşamalı: taslak oluştur → shipper onaylasın (panel canlı izler) →
- * B/L'yi mint et. Rol hesaplama deseni BlStatus.tsx'teki ile aynı mantık: sabit bir
- * "sıradaki adım" state'i değil, draft'ın zincirdeki gerçek durumu kaynak. */
-const IssueBl: React.FC<IssueBlProps> = ({ wallet, onIssued }) => {
+/** Onay kapısının ilk adımı — SADECE taslak oluşturur. Devamı (onay, iptal, mint etme)
+ * "Draft Status" sekmesinde: o sayfa adresi yapıştırınca zincirden okuduğu için hiçbir
+ * state sekme geçişinde kaybolmaz (bu sayfanın kendi local state'inde "hangi aşamadayız"
+ * tutmanın canlı testte bulunan hatası — sekme değişince unutuluyordu — buradan tamamen
+ * kaldırıldı). */
+const IssueBl: React.FC<IssueBlProps> = ({ wallet }) => {
   const [shipper, setShipper] = useState('');
-  const [draft, setDraft] = useState<PublicKey | null>(null);
-  const [draftState, setDraftState] = useState<DraftState | null>(null);
-  const [busy, setBusy] = useState<string | null>(null);
+  const [createdDraft, setCreatedDraft] = useState<PublicKey | null>(null);
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const connection = getConnection();
   const connected = !!wallet.publicKey && !!wallet.provider;
 
-  // Bileşen (yeniden) mount olduğunda, bu carrier için yarım kalmış bir taslak var mı
-  // diye bak — "Approve Draft" sekmesine gidip geri dönünce taslağı unutmasın.
-  useEffect(() => {
-    if (!wallet.publicKey) return;
-    const pending = loadPendingDraft(wallet.publicKey);
-    if (pending) {
-      setShipper(pending.shipper);
-      try {
-        setDraft(new PublicKey(pending.draft));
-      } catch {
-        clearPendingDraft(wallet.publicKey);
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [wallet.publicKey?.toBase58()]);
-
-  useEffect(() => {
-    if (!draft) return;
-    const refresh = () => void fetchDraft(connection, draft).then(setDraftState);
-    refresh();
-    return watchDraft(connection, draft, refresh);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [draft?.toBase58()]);
-
-  const walletLike = (): WalletLike => {
-    if (!wallet.publicKey || !wallet.provider) throw new Error('Önce Phantom bağla.');
-    const provider = wallet.provider;
-    return { publicKey: wallet.publicKey, signTransaction: (tx) => provider.signTransaction(tx) };
-  };
-
   const handleCreateDraft = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!wallet.publicKey || !wallet.provider) return;
     let shipperPk: PublicKey;
     try {
       shipperPk = new PublicKey(shipper.trim());
@@ -105,121 +32,61 @@ const IssueBl: React.FC<IssueBlProps> = ({ wallet, onIssued }) => {
       return;
     }
 
+    const provider = wallet.provider;
+    const walletLike: WalletLike = { publicKey: wallet.publicKey, signTransaction: (tx) => provider.signTransaction(tx) };
+
     setError(null);
-    setBusy('Taslak oluşturuluyor…');
+    setBusy(true);
     try {
-      const { draft: draftPda } = await createDraft(connection, walletLike(), shipperPk);
-      setDraft(draftPda);
-      if (wallet.publicKey) savePendingDraft(wallet.publicKey, shipper.trim(), draftPda);
+      const { draft } = await createDraft(connection, walletLike, shipperPk);
+      setCreatedDraft(draft);
+      setShipper('');
     } catch (err) {
       setError((err as Error).message);
     } finally {
-      setBusy(null);
-    }
-  };
-
-  const handleIssue = async () => {
-    if (!draft) return;
-    let shipperPk: PublicKey;
-    try {
-      shipperPk = new PublicKey(shipper.trim());
-    } catch {
-      setError('Geçersiz Solana adresi.');
-      return;
-    }
-    setError(null);
-    setBusy('B/L oluşturuluyor…');
-    try {
-      const { mint } = await issueBl(connection, walletLike(), shipperPk, draft);
-      if (wallet.publicKey) clearPendingDraft(wallet.publicKey);
-      onIssued(mint);
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  const isDraft = draftState?.status === 'draft';
-  const isApproved = draftState?.status === 'approved';
-  const isConsumed = draftState?.status === 'consumed';
-
-  const handleCancel = async () => {
-    if (!draft) return;
-    setError(null);
-    setBusy('Taslak iptal ediliyor…');
-    try {
-      await cancelDraft(connection, walletLike(), draft);
-      if (wallet.publicKey) clearPendingDraft(wallet.publicKey);
-      setDraft(null);
-      setDraftState(null);
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setBusy(null);
+      setBusy(false);
     }
   };
 
   return (
     <div className="card">
-      <h2 className="section-title">Issue a new B/L</h2>
+      <h2 className="section-title">Create a draft</h2>
       <p className="action-note" style={{ marginTop: 0 }}>
-        Onay kapısı: önce bir taslak oluşturursun, shipper kendi cüzdanıyla onaylamadan B/L
-        mint edilemez — carrier tek taraflı bir shipper atayamaz.
+        Onay kapısının ilk adımı: shipper'ı önerirsin, ama B/L hemen basılmaz — shipper kendi
+        cüzdanıyla onaylamadan mint edilemez. Onaydan sonra basma işlemi <strong>Draft
+        Status</strong> sekmesinde (bu taslağın adresini yapıştırarak).
       </p>
 
       {!connected && <p className="empty-state">Önce Phantom bağla.</p>}
 
-      {!draft && (
-        <form onSubmit={handleCreateDraft} className="new-deal-form">
-          <label>
-            Shipper adresi
-            <input
-              required
-              type="text"
-              placeholder="Solana adresi"
-              value={shipper}
-              onChange={(e) => setShipper(e.target.value)}
-              disabled={!connected || busy !== null}
-            />
-          </label>
-          <button type="submit" className="btn btn-primary" disabled={!connected || busy !== null || !shipper.trim()}>
-            Taslak oluştur
-          </button>
-        </form>
-      )}
+      <form onSubmit={handleCreateDraft} className="new-deal-form">
+        <label>
+          Shipper adresi
+          <input
+            required
+            type="text"
+            placeholder="Solana adresi"
+            value={shipper}
+            onChange={(e) => setShipper(e.target.value)}
+            disabled={!connected || busy}
+          />
+        </label>
+        <button type="submit" className="btn btn-primary" disabled={!connected || busy || !shipper.trim()}>
+          Taslak oluştur
+        </button>
+      </form>
 
-      {draft && (
-        <div className="status-grid">
-          <dt>Draft adresi</dt>
-          <dd>{draft.toBase58()}</dd>
-          <dt>Durum</dt>
-          <dd>
-            <span className={`badge ${isApproved ? 'badge-confirmed' : 'badge-awaiting_approval'}`}>
-              {draftState?.status ?? 'yükleniyor…'}
-            </span>
-          </dd>
+      {createdDraft && (
+        <div className="status-grid" style={{ marginTop: 16 }}>
+          <dt>Oluşan draft adresi</dt>
+          <dd>{createdDraft.toBase58()}</dd>
         </div>
       )}
-
-      {draft && !isApproved && !isConsumed && (
-        <>
-          <p className="empty-state">
-            Shipper'a bu draft adresini ver — "Approve Draft" sekmesinden onaylaması gerekiyor.
-            Onaylanınca bu sayfa otomatik güncellenecek.
-          </p>
-          {isDraft && (
-            <button type="button" className="btn btn-ghost btn-sm" disabled={busy !== null} onClick={() => void handleCancel()}>
-              Taslağı iptal et
-            </button>
-          )}
-        </>
-      )}
-
-      {draft && isApproved && (
-        <button type="button" className="btn btn-primary" disabled={busy !== null} onClick={() => void handleIssue()}>
-          Issue B/L
-        </button>
+      {createdDraft && (
+        <p className="empty-state">
+          Bu adresi shipper'a ver. Onaylandıktan sonra sen (carrier) de aynı adresi{' '}
+          <strong>Draft Status</strong> sekmesine yapıştırıp "Issue B/L" ile mint edeceksin.
+        </p>
       )}
 
       {error && (
@@ -232,7 +99,7 @@ const IssueBl: React.FC<IssueBlProps> = ({ wallet, onIssued }) => {
         <div className="blocking-overlay" role="alert" aria-busy="true">
           <div className="blocking-card">
             <div className="spinner" />
-            <div className="blocking-title">{busy}</div>
+            <div className="blocking-title">Taslak oluşturuluyor…</div>
             <div className="blocking-sub">Phantom'da imza isteği gelecek — onaylamayı unutma.</div>
           </div>
         </div>
