@@ -65,6 +65,7 @@ export interface BlState {
   mint: PublicKey;
   status: Status;
   bump: number;
+  preIssuanceHash: Uint8Array;
 }
 
 function decodeStatus(raw: Record<string, unknown>): Status {
@@ -82,6 +83,7 @@ export async function fetchBlState(connection: Connection, mint: PublicKey): Pro
       mint: account.mint,
       status: decodeStatus(account.status as Record<string, unknown>),
       bump: account.bump,
+      preIssuanceHash: new Uint8Array(account.preIssuanceHash as number[]),
     };
   } catch {
     return null;
@@ -176,6 +178,7 @@ export async function findBlStateByDraft(connection: Connection, draft: PublicKe
     mint: account.mint,
     status: decodeStatus(account.status as Record<string, unknown>),
     bump: account.bump,
+    preIssuanceHash: new Uint8Array(account.preIssuanceHash as number[]),
   };
 }
 
