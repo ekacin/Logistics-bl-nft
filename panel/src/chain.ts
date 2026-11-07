@@ -230,6 +230,17 @@ export async function approveDraft(connection: Connection, wallet: WalletLike, d
   return sendTx(connection, wallet, [ix]);
 }
 
+/** Carrier çağırır — sadece status=='draft' iken. Onaylanmamış taslağı iptal edip
+ * rent'ini geri alır. Onaylanmış/tüketilmiş bir taslakta program reddeder. */
+export async function cancelDraft(connection: Connection, wallet: WalletLike, draft: PublicKey): Promise<string> {
+  const program = getReadOnlyProgram(connection);
+  const ix = await program.methods
+    .cancelDraft()
+    .accountsPartial({ carrier: wallet.publicKey, draft })
+    .instruction();
+  return sendTx(connection, wallet, [ix]);
+}
+
 /** Carrier çağırır. Mint taze bir Keypair — Phantom onu imzalayamaz, bu yüzden
  * `extraSigners`'a verilip `sendTx` içinde `partialSign` ile yerel (popup'sız)
  * imzalanıyor; Phantom sadece carrier'ın kendi imzasını atıyor (dış inceleme notu).

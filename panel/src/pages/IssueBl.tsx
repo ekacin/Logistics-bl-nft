@@ -3,6 +3,7 @@ import { PublicKey } from '@solana/web3.js';
 import type { WalletState } from '../wallet';
 import {
   type DraftState,
+  cancelDraft,
   createDraft,
   fetchDraft,
   getConnection,
@@ -88,8 +89,24 @@ const IssueBl: React.FC<IssueBlProps> = ({ wallet, onIssued }) => {
     }
   };
 
+  const isDraft = draftState?.status === 'draft';
   const isApproved = draftState?.status === 'approved';
   const isConsumed = draftState?.status === 'consumed';
+
+  const handleCancel = async () => {
+    if (!draft) return;
+    setError(null);
+    setBusy('Taslak iptal ediliyor…');
+    try {
+      await cancelDraft(connection, walletLike(), draft);
+      setDraft(null);
+      setDraftState(null);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  };
 
   return (
     <div className="card">
@@ -134,10 +151,17 @@ const IssueBl: React.FC<IssueBlProps> = ({ wallet, onIssued }) => {
       )}
 
       {draft && !isApproved && !isConsumed && (
-        <p className="empty-state">
-          Shipper'a bu draft adresini ver — "Approve Draft" sekmesinden onaylaması gerekiyor.
-          Onaylanınca bu sayfa otomatik güncellenecek.
-        </p>
+        <>
+          <p className="empty-state">
+            Shipper'a bu draft adresini ver — "Approve Draft" sekmesinden onaylaması gerekiyor.
+            Onaylanınca bu sayfa otomatik güncellenecek.
+          </p>
+          {isDraft && (
+            <button type="button" className="btn btn-ghost btn-sm" disabled={busy !== null} onClick={() => void handleCancel()}>
+              Taslağı iptal et
+            </button>
+          )}
+        </>
       )}
 
       {draft && isApproved && (

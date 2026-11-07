@@ -65,6 +65,57 @@ export type LogisticsBlNft = {
       "args": []
     },
     {
+      "name": "cancelDraft",
+      "discriminator": [
+        234,
+        193,
+        92,
+        79,
+        29,
+        206,
+        188,
+        175
+      ],
+      "accounts": [
+        {
+          "name": "carrier",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "draft"
+          ]
+        },
+        {
+          "name": "draft",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  114,
+                  97,
+                  102,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "carrier"
+              },
+              {
+                "kind": "account",
+                "path": "draft.draftId",
+                "account": "draft"
+              }
+            ]
+          }
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "createDraft",
       "discriminator": [
         163,
