@@ -15,6 +15,10 @@ declare_id!("Cv8LVQWVR6t59hPQfSyf9LmFsG9ueouz5iZKfiNJV7nN");
 pub mod logistics_bl_nft {
     use super::*;
 
+    pub fn create_draft(ctx: Context<CreateDraft>, draft_id: u64, content_hash: [u8; 32]) -> Result<()> {
+        crate::instructions::create_draft::handle_create_draft(ctx, draft_id, content_hash)
+    }
+
     pub fn issue_bl(ctx: Context<IssueBl>) -> Result<()> {
         crate::instructions::issue_bl::handle_issue_bl(ctx)
     }
