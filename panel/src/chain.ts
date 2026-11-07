@@ -154,6 +154,31 @@ export function watchDraft(connection: Connection, draft: PublicKey, onChange: (
   };
 }
 
+// BillOfLadingState'teki draft_ref alanının byte offset'i: 8 (discriminator) +
+// carrier(32) + shipper(32) + mint(32) + status(1) + si_ref(32).
+const BL_STATE_DRAFT_REF_OFFSET = 8 + 32 + 32 + 32 + 1 + 32;
+
+/** issue_bl başarıyla geçtiğinde draft "consumed" olur ama mint adresi hiçbir yerde
+ * kalıcı tutulmaz (ephemeral keypair, sadece o anki sonuç ekranında görünür) — sayfa
+ * yenilenince/sekme değişince kaybolur (canlı testte bulundu). Bu, draft_ref alanına
+ * göre memcmp ile zincirden geriye doğru arayıp o taslaktan doğan B/L'yi (ve mint'ini)
+ * bulur — kayıp bir "sonuç ekranı"na bağımlı olmadan. */
+export async function findBlStateByDraft(connection: Connection, draft: PublicKey): Promise<BlState | null> {
+  const program = getReadOnlyProgram(connection);
+  const results = await program.account.billOfLadingState.all([
+    { memcmp: { offset: BL_STATE_DRAFT_REF_OFFSET, bytes: draft.toBase58() } },
+  ]);
+  if (results.length === 0) return null;
+  const account = results[0].account;
+  return {
+    carrier: account.carrier,
+    shipper: account.shipper,
+    mint: account.mint,
+    status: decodeStatus(account.status as Record<string, unknown>),
+    bump: account.bump,
+  };
+}
+
 // ---- yazma katmanı ----
 // Hem Phantom (window.phantom.solana) hem de smoke-test'teki düz bir Keypair bu şekle
 // uyar — ikisi de "publicKey + signTransaction" sağlıyor, chain.ts hangisiyle

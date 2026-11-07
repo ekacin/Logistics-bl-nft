@@ -2,10 +2,12 @@ import React, { useEffect, useState } from 'react';
 import { PublicKey } from '@solana/web3.js';
 import type { WalletState } from '../wallet';
 import {
+  type BlState,
   type DraftState,
   approveDraft,
   cancelDraft,
   fetchDraft,
+  findBlStateByDraft,
   getConnection,
   issueBl,
   watchDraft,
@@ -32,6 +34,7 @@ const DraftStatus: React.FC<DraftStatusProps> = ({ wallet, onIssued }) => {
   const [notFound, setNotFound] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [resultingBl, setResultingBl] = useState<BlState | null>(null);
 
   const connection = getConnection();
 
@@ -46,6 +49,18 @@ const DraftStatus: React.FC<DraftStatusProps> = ({ wallet, onIssued }) => {
     return watchDraft(connection, draft, refresh);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draft?.toBase58()]);
+
+  // issue_bl geçince draft "consumed" olur ama mint adresi hiçbir yerde kalıcı
+  // tutulmaz — draft_ref'e göre zincirden geriye doğru arayıp hangi B/L'nin bu
+  // taslaktan doğduğunu buluyoruz (kayıp "sonuç ekranı" sorununu kalıcı çözer).
+  useEffect(() => {
+    if (!draft || draftState?.status !== 'consumed') {
+      setResultingBl(null);
+      return;
+    }
+    void findBlStateByDraft(connection, draft).then(setResultingBl);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draft?.toBase58(), draftState?.status]);
 
   const openDraft = (e: React.FormEvent) => {
     e.preventDefault();
@@ -211,6 +226,19 @@ const DraftStatus: React.FC<DraftStatusProps> = ({ wallet, onIssued }) => {
           <button type="button" className="btn btn-primary" disabled={busy !== null} onClick={() => void handleIssue()}>
             Issue B/L
           </button>
+        )}
+
+        {draftState?.status === 'consumed' && (
+          <>
+            <p className="empty-state">
+              Bu taslak zaten mint edilmiş. {resultingBl ? 'Doğan B/L aşağıda:' : 'B/L aranıyor…'}
+            </p>
+            {resultingBl && (
+              <button type="button" className="btn btn-primary" onClick={() => onIssued(resultingBl.mint)}>
+                B/L'yi aç ({resultingBl.mint.toBase58().slice(0, 4)}…{resultingBl.mint.toBase58().slice(-4)})
+              </button>
+            )}
+          </>
         )}
 
         {error && (
