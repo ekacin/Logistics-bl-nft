@@ -28,3 +28,21 @@ pub struct SurrenderRequest {
     pub deadline: i64,
     pub bump: u8,
 }
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq, InitSpace)]
+pub enum DraftStatus {
+    Draft,
+    Approved,
+    Consumed,
+}
+
+#[account]
+#[derive(InitSpace)]
+pub struct Draft {
+    pub carrier: Pubkey,
+    pub shipper: Pubkey,
+    pub content_hash: [u8; 32],
+    pub draft_id: u64,
+    pub status: DraftStatus,
+    pub bump: u8,
+}

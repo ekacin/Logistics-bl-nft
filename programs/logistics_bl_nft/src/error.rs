@@ -6,4 +6,8 @@ pub enum ErrorCode {
     InvalidState,
     #[msg("Surrender window deadline has not been reached yet")]
     DeadlineNotReached,
+    #[msg("Draft has not been approved by the shipper yet")]
+    DraftNotApproved,
+    #[msg("Draft has already been consumed by a previous issue_bl call")]
+    DraftAlreadyConsumed,
 }
