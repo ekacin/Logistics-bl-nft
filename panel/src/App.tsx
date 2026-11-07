@@ -2,8 +2,8 @@ import React, { useState } from 'react';
 import { usePhantomWallet } from './wallet';
 import { PublicKey } from '@solana/web3.js';
 import IssueBl from './pages/IssueBl';
-// TODO(commit 6): TrackBl/BlStatus sayfaları gelince bu placeholder'lar gerçek
-// import'larla değiştirilecek.
+import TrackBl from './pages/TrackBl';
+import BlStatus from './pages/BlStatus';
 
 type View = 'issue' | 'track';
 
@@ -61,12 +61,7 @@ const App: React.FC = () => {
 
       <main className="app-main">
         {openedMint ? (
-          <div className="card">
-            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setOpenedMint(null)}>
-              ← Back
-            </button>
-            <p className="empty-state">BlStatus sayfası commit 6'da gelecek. Açılan mint: {openedMint.toBase58()}</p>
-          </div>
+          <BlStatus mint={openedMint} wallet={wallet} onClose={() => setOpenedMint(null)} />
         ) : (
           <>
             <nav className="app-nav">
@@ -86,7 +81,7 @@ const App: React.FC = () => {
               </button>
             </nav>
             {view === 'issue' && <IssueBl wallet={wallet} onIssued={(mint) => setOpenedMint(mint)} />}
-            {view === 'track' && <div className="card">TrackBl sayfası commit 6'da gelecek.</div>}
+            {view === 'track' && <TrackBl onOpen={(mint) => setOpenedMint(mint)} />}
           </>
         )}
       </main>
