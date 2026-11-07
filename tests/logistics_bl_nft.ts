@@ -60,13 +60,62 @@ describe("logistics_bl_nft — çekirdek B/L akışı", () => {
     return { blState, vault, surrenderRequest, shipperAta, buyerAta };
   }
 
+  // Onay kapısı: draft_id carrier tarafından verilir (panelde timestamp kullanılacak
+  // deseni taklit ediyoruz) — her test kendi benzersiz id'sini bu sayaçtan alır.
+  let draftIdCounter = BigInt(Date.now());
+  function nextDraftId(): bigint {
+    return draftIdCounter++;
+  }
+
+  function u64LeBytes(n: bigint): Buffer {
+    const buf = Buffer.alloc(8);
+    buf.writeBigUInt64LE(n);
+    return buf;
+  }
+
+  function deriveDraft(draftId: bigint) {
+    const [draft] = PublicKey.findProgramAddressSync(
+      [Buffer.from("draft"), carrier.publicKey.toBuffer(), u64LeBytes(draftId)],
+      PROGRAM_ID
+    );
+    return draft;
+  }
+
+  async function createDraft(draftId: bigint, contentHash = Buffer.alloc(32)) {
+    const draft = deriveDraft(draftId);
+    await program.methods
+      .createDraft(new anchor.BN(draftId.toString()), Array.from(contentHash))
+      .accountsPartial({
+        carrier: carrier.publicKey,
+        shipper: shipper.publicKey,
+        draft,
+        systemProgram: SystemProgram.programId,
+      })
+      .signers([carrier])
+      .rpc();
+    return draft;
+  }
+
+  async function approveDraft(draft: anchor.web3.PublicKey, approver = shipper) {
+    await program.methods
+      .approveDraft()
+      .accountsPartial({ shipper: approver.publicKey, draft })
+      .signers([approver])
+      .rpc();
+  }
+
   async function issueBl(mint: anchor.web3.Keypair) {
+    const draftId = nextDraftId();
+    const draft = await createDraft(draftId);
+    await approveDraft(draft);
+
     const { blState, shipperAta } = deriveAddresses(mint.publicKey);
     await program.methods
       .issueBl()
       .accountsPartial({
         carrier: carrier.publicKey,
         shipper: shipper.publicKey,
+        draft,
         mint: mint.publicKey,
         shipperAta,
         blState,
@@ -239,5 +288,104 @@ describe("logistics_bl_nft — çekirdek B/L akışı", () => {
       expect((err as Error).toString()).to.match(/DeadlineNotReached|6001/);
     }
     expect(threw, "deadline dolmadan refund BAŞARILI olmamalıydı").to.equal(true);
+  });
+
+  it("Negatif: onaysız taslakla issue_bl çağrılırsa DraftNotApproved ile patlar", async () => {
+    const mint = Keypair.generate();
+    const draftId = nextDraftId();
+    const draft = await createDraft(draftId); // onaylanmadı
+
+    const { blState, shipperAta } = deriveAddresses(mint.publicKey);
+
+    let threw = false;
+    try {
+      await program.methods
+        .issueBl()
+        .accountsPartial({
+          carrier: carrier.publicKey,
+          shipper: shipper.publicKey,
+          draft,
+          mint: mint.publicKey,
+          shipperAta,
+          blState,
+          tokenProgram: TOKEN_PROGRAM_ID,
+          associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
+        })
+        .signers([carrier, mint])
+        .rpc();
+    } catch (err) {
+      threw = true;
+      expect((err as Error).toString()).to.match(/DraftNotApproved|6002/);
+    }
+    expect(threw, "onaysız taslakla issue_bl BAŞARILI olmamalıydı").to.equal(true);
+  });
+
+  it("Negatif: shipper olmayan biri approve_draft çağırırsa has_one ile patlar", async () => {
+    const draftId = nextDraftId();
+    const draft = await createDraft(draftId);
+    const impostor = Keypair.generate();
+    await airdrop(connection, impostor.publicKey, 1);
+
+    let threw = false;
+    try {
+      await approveDraft(draft, impostor);
+    } catch (err) {
+      threw = true;
+      expect((err as Error).toString()).to.match(/ConstraintHasOne|has_one|2001/);
+    }
+    expect(threw, "shipper olmayan birinin approve_draft çağırması BAŞARILI olmamalıydı").to.equal(true);
+  });
+
+  it("Negatif: aynı onaylı taslakla ikinci kez issue_bl çağrılırsa Consumed olduğu için patlar", async () => {
+    const draftId = nextDraftId();
+    const draft = await createDraft(draftId);
+    await approveDraft(draft);
+
+    // İlk kullanım başarılı olmalı.
+    const mint1 = Keypair.generate();
+    const { blState: blState1, shipperAta: shipperAta1 } = deriveAddresses(mint1.publicKey);
+    await program.methods
+      .issueBl()
+      .accountsPartial({
+        carrier: carrier.publicKey,
+        shipper: shipper.publicKey,
+        draft,
+        mint: mint1.publicKey,
+        shipperAta: shipperAta1,
+        blState: blState1,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+        systemProgram: SystemProgram.programId,
+      })
+      .signers([carrier, mint1])
+      .rpc();
+
+    // Aynı (artık Consumed) taslakla ikinci bir mint denemesi patlamalı.
+    const mint2 = Keypair.generate();
+    const { blState: blState2, shipperAta: shipperAta2 } = deriveAddresses(mint2.publicKey);
+
+    let threw = false;
+    try {
+      await program.methods
+        .issueBl()
+        .accountsPartial({
+          carrier: carrier.publicKey,
+          shipper: shipper.publicKey,
+          draft,
+          mint: mint2.publicKey,
+          shipperAta: shipperAta2,
+          blState: blState2,
+          tokenProgram: TOKEN_PROGRAM_ID,
+          associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
+        })
+        .signers([carrier, mint2])
+        .rpc();
+    } catch (err) {
+      threw = true;
+      expect((err as Error).toString()).to.match(/DraftNotApproved|6002/);
+    }
+    expect(threw, "Consumed taslakla ikinci issue_bl BAŞARILI olmamalıydı").to.equal(true);
   });
 });
