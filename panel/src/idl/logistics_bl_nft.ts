@@ -14,6 +14,128 @@ export type LogisticsBlNft = {
   },
   "instructions": [
     {
+      "name": "approveDraft",
+      "discriminator": [
+        95,
+        107,
+        206,
+        187,
+        126,
+        219,
+        194,
+        186
+      ],
+      "accounts": [
+        {
+          "name": "shipper",
+          "signer": true,
+          "relations": [
+            "draft"
+          ]
+        },
+        {
+          "name": "draft",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  114,
+                  97,
+                  102,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "draft.carrier",
+                "account": "draft"
+              },
+              {
+                "kind": "account",
+                "path": "draft.draftId",
+                "account": "draft"
+              }
+            ]
+          }
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "createDraft",
+      "discriminator": [
+        163,
+        20,
+        96,
+        16,
+        176,
+        38,
+        78,
+        95
+      ],
+      "accounts": [
+        {
+          "name": "carrier",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "shipper",
+          "docs": [
+            "approve_draft'ta kendisi verir (onay kapısının tüm amacı bu)."
+          ]
+        },
+        {
+          "name": "draft",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  114,
+                  97,
+                  102,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "carrier"
+              },
+              {
+                "kind": "arg",
+                "path": "draftId"
+              }
+            ]
+          }
+        },
+        {
+          "name": "systemProgram",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "draftId",
+          "type": "u64"
+        },
+        {
+          "name": "contentHash",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        }
+      ]
+    },
+    {
       "name": "issueBl",
       "discriminator": [
         30,
@@ -29,13 +151,48 @@ export type LogisticsBlNft = {
         {
           "name": "carrier",
           "writable": true,
-          "signer": true
+          "signer": true,
+          "relations": [
+            "draft"
+          ]
         },
         {
           "name": "shipper",
           "docs": [
-            "imzasına gerek yok (mimari-spec.md, çekirdek tablo #6)."
+            "imzasına gerek yok (mimari-spec.md, çekirdek tablo #6). Kimliği `draft` üzerindeki",
+            "`has_one = shipper` ile doğrulanıyor — carrier burada keyfi bir adres yazamaz,",
+            "shipper'ın kendisi onayladığı taslaktaki adresle eşleşmek zorunda (onay kapısı)."
+          ],
+          "relations": [
+            "draft"
           ]
+        },
+        {
+          "name": "draft",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  114,
+                  97,
+                  102,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "carrier"
+              },
+              {
+                "kind": "account",
+                "path": "draft.draftId",
+                "account": "draft"
+              }
+            ]
+          }
         },
         {
           "name": "mint",
@@ -716,6 +873,19 @@ export type LogisticsBlNft = {
       ]
     },
     {
+      "name": "draft",
+      "discriminator": [
+        220,
+        65,
+        90,
+        193,
+        49,
+        181,
+        224,
+        227
+      ]
+    },
+    {
       "name": "surrenderRequest",
       "discriminator": [
         5,
@@ -739,6 +909,16 @@ export type LogisticsBlNft = {
       "code": 6001,
       "name": "deadlineNotReached",
       "msg": "Surrender window deadline has not been reached yet"
+    },
+    {
+      "code": 6002,
+      "name": "draftNotApproved",
+      "msg": "Draft has not been approved by the shipper yet"
+    },
+    {
+      "code": 6003,
+      "name": "draftAlreadyConsumed",
+      "msg": "Draft has already been consumed by a previous issue_bl call"
     }
   ],
   "types": [
@@ -792,6 +972,64 @@ export type LogisticsBlNft = {
       }
     },
     {
+      "name": "draft",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "carrier",
+            "type": "pubkey"
+          },
+          {
+            "name": "shipper",
+            "type": "pubkey"
+          },
+          {
+            "name": "contentHash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "draftId",
+            "type": "u64"
+          },
+          {
+            "name": "status",
+            "type": {
+              "defined": {
+                "name": "draftStatus"
+              }
+            }
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "draftStatus",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "draft"
+          },
+          {
+            "name": "approved"
+          },
+          {
+            "name": "consumed"
+          }
+        ]
+      }
+    },
+    {
       "name": "status",
       "type": {
         "kind": "enum",
@@ -834,6 +1072,11 @@ export type LogisticsBlNft = {
       "name": "blStateSeed",
       "type": "bytes",
       "value": "[98, 108, 95, 115, 116, 97, 116, 101]"
+    },
+    {
+      "name": "draftSeed",
+      "type": "bytes",
+      "value": "[100, 114, 97, 102, 116]"
     },
     {
       "name": "surrenderRequestSeed",

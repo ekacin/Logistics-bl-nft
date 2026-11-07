@@ -8,6 +8,128 @@
   },
   "instructions": [
     {
+      "name": "approve_draft",
+      "discriminator": [
+        95,
+        107,
+        206,
+        187,
+        126,
+        219,
+        194,
+        186
+      ],
+      "accounts": [
+        {
+          "name": "shipper",
+          "signer": true,
+          "relations": [
+            "draft"
+          ]
+        },
+        {
+          "name": "draft",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  114,
+                  97,
+                  102,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "draft.carrier",
+                "account": "Draft"
+              },
+              {
+                "kind": "account",
+                "path": "draft.draft_id",
+                "account": "Draft"
+              }
+            ]
+          }
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "create_draft",
+      "discriminator": [
+        163,
+        20,
+        96,
+        16,
+        176,
+        38,
+        78,
+        95
+      ],
+      "accounts": [
+        {
+          "name": "carrier",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "shipper",
+          "docs": [
+            "approve_draft'ta kendisi verir (onay kapısının tüm amacı bu)."
+          ]
+        },
+        {
+          "name": "draft",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  114,
+                  97,
+                  102,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "carrier"
+              },
+              {
+                "kind": "arg",
+                "path": "draft_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "draft_id",
+          "type": "u64"
+        },
+        {
+          "name": "content_hash",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        }
+      ]
+    },
+    {
       "name": "issue_bl",
       "discriminator": [
         30,
@@ -23,13 +145,48 @@
         {
           "name": "carrier",
           "writable": true,
-          "signer": true
+          "signer": true,
+          "relations": [
+            "draft"
+          ]
         },
         {
           "name": "shipper",
           "docs": [
-            "imzasına gerek yok (mimari-spec.md, çekirdek tablo #6)."
+            "imzasına gerek yok (mimari-spec.md, çekirdek tablo #6). Kimliği `draft` üzerindeki",
+            "`has_one = shipper` ile doğrulanıyor — carrier burada keyfi bir adres yazamaz,",
+            "shipper'ın kendisi onayladığı taslaktaki adresle eşleşmek zorunda (onay kapısı)."
+          ],
+          "relations": [
+            "draft"
           ]
+        },
+        {
+          "name": "draft",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  114,
+                  97,
+                  102,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "carrier"
+              },
+              {
+                "kind": "account",
+                "path": "draft.draft_id",
+                "account": "Draft"
+              }
+            ]
+          }
         },
         {
           "name": "mint",
@@ -710,6 +867,19 @@
       ]
     },
     {
+      "name": "Draft",
+      "discriminator": [
+        220,
+        65,
+        90,
+        193,
+        49,
+        181,
+        224,
+        227
+      ]
+    },
+    {
       "name": "SurrenderRequest",
       "discriminator": [
         5,
@@ -733,6 +903,16 @@
       "code": 6001,
       "name": "DeadlineNotReached",
       "msg": "Surrender window deadline has not been reached yet"
+    },
+    {
+      "code": 6002,
+      "name": "DraftNotApproved",
+      "msg": "Draft has not been approved by the shipper yet"
+    },
+    {
+      "code": 6003,
+      "name": "DraftAlreadyConsumed",
+      "msg": "Draft has already been consumed by a previous issue_bl call"
     }
   ],
   "types": [
@@ -786,6 +966,64 @@
       }
     },
     {
+      "name": "Draft",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "carrier",
+            "type": "pubkey"
+          },
+          {
+            "name": "shipper",
+            "type": "pubkey"
+          },
+          {
+            "name": "content_hash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "draft_id",
+            "type": "u64"
+          },
+          {
+            "name": "status",
+            "type": {
+              "defined": {
+                "name": "DraftStatus"
+              }
+            }
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "DraftStatus",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "Draft"
+          },
+          {
+            "name": "Approved"
+          },
+          {
+            "name": "Consumed"
+          }
+        ]
+      }
+    },
+    {
       "name": "Status",
       "type": {
         "kind": "enum",
@@ -828,6 +1066,11 @@
       "name": "BL_STATE_SEED",
       "type": "bytes",
       "value": "[98, 108, 95, 115, 116, 97, 116, 101]"
+    },
+    {
+      "name": "DRAFT_SEED",
+      "type": "bytes",
+      "value": "[100, 114, 97, 102, 116]"
     },
     {
       "name": "SURRENDER_REQUEST_SEED",

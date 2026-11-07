@@ -1,4 +1,4 @@
-import { Program, type Provider } from '@anchor-lang/core';
+import { BN, Program, type Provider } from '@anchor-lang/core';
 import {
   ASSOCIATED_TOKEN_PROGRAM_ID,
   TOKEN_PROGRAM_ID,
@@ -20,6 +20,17 @@ export const PROGRAM_ID = new PublicKey((idl as { address: string }).address);
 export const BL_STATE_SEED = Buffer.from('bl_state');
 export const VAULT_SEED = Buffer.from('vault');
 export const SURRENDER_REQUEST_SEED = Buffer.from('surrender_request');
+export const DRAFT_SEED = Buffer.from('draft');
+
+function u64LeBytes(n: bigint): Buffer {
+  const buf = Buffer.alloc(8);
+  buf.writeBigUInt64LE(n);
+  return buf;
+}
+
+export function deriveDraft(carrier: PublicKey, draftId: bigint): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync([DRAFT_SEED, carrier.toBuffer(), u64LeBytes(draftId)], PROGRAM_ID);
+}
 
 export function deriveBlState(mint: PublicKey): [PublicKey, number] {
   return PublicKey.findProgramAddressSync([BL_STATE_SEED, mint.toBuffer()], PROGRAM_ID);
@@ -106,6 +117,43 @@ export function watchBlState(connection: Connection, mint: PublicKey, onChange: 
   };
 }
 
+export type DraftStatusValue = 'draft' | 'approved' | 'consumed';
+
+export interface DraftState {
+  carrier: PublicKey;
+  shipper: PublicKey;
+  contentHash: Uint8Array;
+  draftId: bigint;
+  status: DraftStatusValue;
+  bump: number;
+}
+
+export async function fetchDraft(connection: Connection, draft: PublicKey): Promise<DraftState | null> {
+  const program = getReadOnlyProgram(connection);
+  try {
+    const account = await program.account.draft.fetch(draft);
+    return {
+      carrier: account.carrier,
+      shipper: account.shipper,
+      contentHash: new Uint8Array(account.contentHash as number[]),
+      draftId: BigInt(account.draftId.toString()),
+      status: decodeStatus(account.status as Record<string, unknown>) as DraftStatusValue,
+      bump: account.bump,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** Onay kapısı: taslak onaylanınca (approve_draft) canlı güncellenmesi için — aynı
+ * watchBlState deseni, PDA'sı sadece Draft. */
+export function watchDraft(connection: Connection, draft: PublicKey, onChange: () => void): () => void {
+  const subId = connection.onAccountChange(draft, () => onChange());
+  return () => {
+    void connection.removeAccountChangeListener(subId);
+  };
+}
+
 // ---- yazma katmanı ----
 // Hem Phantom (window.phantom.solana) hem de smoke-test'teki düz bir Keypair bu şekle
 // uyar — ikisi de "publicKey + signTransaction" sağlıyor, chain.ts hangisiyle
@@ -144,13 +192,53 @@ async function sendTx(
   return signature;
 }
 
+/** Onay kapısı adım 1 — Carrier çağırır, shipper bu adımda imzalamaz. draft_id olarak
+ * panelde Date.now() kullanılıyor (benzersizlik için yeterli — çakışırsa `init` sessizce
+ * değil gürültülü hata verir, kullanıcı tekrar dener). */
+export async function createDraft(
+  connection: Connection,
+  wallet: WalletLike,
+  shipper: PublicKey,
+  contentHash: Uint8Array = new Uint8Array(32)
+): Promise<{ draft: PublicKey; draftId: bigint; signature: string }> {
+  const program = getReadOnlyProgram(connection);
+  const draftId = BigInt(Date.now());
+  const [draft] = deriveDraft(wallet.publicKey, draftId);
+
+  const ix = await program.methods
+    .createDraft(new BN(draftId.toString()), Array.from(contentHash))
+    .accountsPartial({
+      carrier: wallet.publicKey,
+      shipper,
+      draft,
+      systemProgram: SystemProgram.programId,
+    })
+    .instruction();
+
+  const signature = await sendTx(connection, wallet, [ix]);
+  return { draft, draftId, signature };
+}
+
+/** Onay kapısı adım 2 — Shipper çağırır. has_one=shipper zincirde zaten kilitli; burada
+ * ayrıca bir kontrole gerek yok, program reddederse hata olduğu gibi yukarı fırlar. */
+export async function approveDraft(connection: Connection, wallet: WalletLike, draft: PublicKey): Promise<string> {
+  const program = getReadOnlyProgram(connection);
+  const ix = await program.methods
+    .approveDraft()
+    .accountsPartial({ shipper: wallet.publicKey, draft })
+    .instruction();
+  return sendTx(connection, wallet, [ix]);
+}
+
 /** Carrier çağırır. Mint taze bir Keypair — Phantom onu imzalayamaz, bu yüzden
  * `extraSigners`'a verilip `sendTx` içinde `partialSign` ile yerel (popup'sız)
- * imzalanıyor; Phantom sadece carrier'ın kendi imzasını atıyor (dış inceleme notu). */
+ * imzalanıyor; Phantom sadece carrier'ın kendi imzasını atıyor (dış inceleme notu).
+ * `draft` onaylanmış olmalı — değilse program DraftNotApproved ile reddeder. */
 export async function issueBl(
   connection: Connection,
   wallet: WalletLike,
-  shipper: PublicKey
+  shipper: PublicKey,
+  draft: PublicKey
 ): Promise<{ mint: PublicKey; signature: string }> {
   const program = getReadOnlyProgram(connection);
   const mint = Keypair.generate();
@@ -162,6 +250,7 @@ export async function issueBl(
     .accountsPartial({
       carrier: wallet.publicKey,
       shipper,
+      draft,
       mint: mint.publicKey,
       shipperAta,
       blState,

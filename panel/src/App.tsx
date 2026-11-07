@@ -4,8 +4,9 @@ import { PublicKey } from '@solana/web3.js';
 import IssueBl from './pages/IssueBl';
 import TrackBl from './pages/TrackBl';
 import BlStatus from './pages/BlStatus';
+import DraftStatus from './pages/DraftStatus';
 
-type View = 'issue' | 'track';
+type View = 'issue' | 'track' | 'approveDraft';
 
 function shortAddr(pk: PublicKey): string {
   const s = pk.toBase58();
@@ -79,9 +80,17 @@ const App: React.FC = () => {
               >
                 Track
               </button>
+              <button
+                type="button"
+                className={`btn btn-sm ${view === 'approveDraft' ? 'btn-primary' : ''}`}
+                onClick={() => setView('approveDraft')}
+              >
+                Approve Draft
+              </button>
             </nav>
             {view === 'issue' && <IssueBl wallet={wallet} onIssued={(mint) => setOpenedMint(mint)} />}
             {view === 'track' && <TrackBl onOpen={(mint) => setOpenedMint(mint)} />}
+            {view === 'approveDraft' && <DraftStatus wallet={wallet} />}
           </>
         )}
       </main>
