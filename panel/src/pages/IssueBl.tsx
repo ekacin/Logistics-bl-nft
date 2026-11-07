@@ -17,6 +17,39 @@ interface IssueBlProps {
   onIssued: (mint: PublicKey) => void;
 }
 
+// Carrier başka bir nav sekmesine geçince (örn. Approve Draft) bu bileşen unmount
+// oluyor — sayfa yenilense bile taslak unutulmasın diye cüzdana özel localStorage
+// kaydı tutuluyor (yalnızca bu tarayıcıdaki kullanım kolaylığı için, zincirdeki
+// gerçek durumun yerine geçmiyor — watchDraft/fetchDraft hâlâ tek doğruluk kaynağı).
+function pendingDraftKey(carrier: PublicKey): string {
+  return `bl_nft_pending_draft::${carrier.toBase58()}`;
+}
+
+function loadPendingDraft(carrier: PublicKey): { shipper: string; draft: string } | null {
+  try {
+    const raw = localStorage.getItem(pendingDraftKey(carrier));
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function savePendingDraft(carrier: PublicKey, shipper: string, draft: PublicKey) {
+  try {
+    localStorage.setItem(pendingDraftKey(carrier), JSON.stringify({ shipper, draft: draft.toBase58() }));
+  } catch {
+    /* localStorage kullanılamıyorsa sessizce yok say — sadece kolaylık */
+  }
+}
+
+function clearPendingDraft(carrier: PublicKey) {
+  try {
+    localStorage.removeItem(pendingDraftKey(carrier));
+  } catch {
+    /* yok say */
+  }
+}
+
 /** Onay kapısı: issue_bl artık carrier'ın tek başına çağırabileceği bir işlem değil —
  * önce create_draft (carrier), sonra approve_draft (shipper, kendi imzasıyla) gerekiyor.
  * Bu yüzden sayfa iki aşamalı: taslak oluştur → shipper onaylasın (panel canlı izler) →
@@ -31,6 +64,22 @@ const IssueBl: React.FC<IssueBlProps> = ({ wallet, onIssued }) => {
 
   const connection = getConnection();
   const connected = !!wallet.publicKey && !!wallet.provider;
+
+  // Bileşen (yeniden) mount olduğunda, bu carrier için yarım kalmış bir taslak var mı
+  // diye bak — "Approve Draft" sekmesine gidip geri dönünce taslağı unutmasın.
+  useEffect(() => {
+    if (!wallet.publicKey) return;
+    const pending = loadPendingDraft(wallet.publicKey);
+    if (pending) {
+      setShipper(pending.shipper);
+      try {
+        setDraft(new PublicKey(pending.draft));
+      } catch {
+        clearPendingDraft(wallet.publicKey);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wallet.publicKey?.toBase58()]);
 
   useEffect(() => {
     if (!draft) return;
@@ -61,6 +110,7 @@ const IssueBl: React.FC<IssueBlProps> = ({ wallet, onIssued }) => {
     try {
       const { draft: draftPda } = await createDraft(connection, walletLike(), shipperPk);
       setDraft(draftPda);
+      if (wallet.publicKey) savePendingDraft(wallet.publicKey, shipper.trim(), draftPda);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -81,6 +131,7 @@ const IssueBl: React.FC<IssueBlProps> = ({ wallet, onIssued }) => {
     setBusy('B/L oluşturuluyor…');
     try {
       const { mint } = await issueBl(connection, walletLike(), shipperPk, draft);
+      if (wallet.publicKey) clearPendingDraft(wallet.publicKey);
       onIssued(mint);
     } catch (err) {
       setError((err as Error).message);
@@ -99,6 +150,7 @@ const IssueBl: React.FC<IssueBlProps> = ({ wallet, onIssued }) => {
     setBusy('Taslak iptal ediliyor…');
     try {
       await cancelDraft(connection, walletLike(), draft);
+      if (wallet.publicKey) clearPendingDraft(wallet.publicKey);
       setDraft(null);
       setDraftState(null);
     } catch (err) {
