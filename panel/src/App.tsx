@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { usePhantomWallet } from './wallet';
 import { PublicKey } from '@solana/web3.js';
-// TODO(commit 5/6): IssueBl/TrackBl/BlStatus sayfaları gelince bu placeholder'lar
-// gerçek import'larla değiştirilecek — App shell'in kendisi bu commit'in konusu.
+import IssueBl from './pages/IssueBl';
+// TODO(commit 6): TrackBl/BlStatus sayfaları gelince bu placeholder'lar gerçek
+// import'larla değiştirilecek.
 
 type View = 'issue' | 'track';
 
@@ -17,7 +18,8 @@ function shortAddr(pk: PublicKey): string {
  * cüzdanı gösterir; UBLP'nin InstanceSwitcher'ı yok — Phantom'ın kendi hesap
  * değiştiricisi aynı işi görüyor (wallet.ts'teki accountChanged dinleyicisi sayesinde). */
 const App: React.FC = () => {
-  const { publicKey, connecting, error, connect, disconnect } = usePhantomWallet();
+  const wallet = usePhantomWallet();
+  const { publicKey, connecting, error, connect, disconnect } = wallet;
   const [view, setView] = useState<View>('track');
   const [openedMint, setOpenedMint] = useState<PublicKey | null>(null);
 
@@ -83,7 +85,7 @@ const App: React.FC = () => {
                 Track
               </button>
             </nav>
-            {view === 'issue' && <div className="card">IssueBl sayfası commit 5'te gelecek.</div>}
+            {view === 'issue' && <IssueBl wallet={wallet} onIssued={(mint) => setOpenedMint(mint)} />}
             {view === 'track' && <div className="card">TrackBl sayfası commit 6'da gelecek.</div>}
           </>
         )}
