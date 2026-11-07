@@ -1,122 +1,95 @@
-import { useState } from 'react'
-import heroImg from './assets/hero.png'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import './App.css'
+import React, { useState } from 'react';
+import { usePhantomWallet } from './wallet';
+import { PublicKey } from '@solana/web3.js';
+// TODO(commit 5/6): IssueBl/TrackBl/BlStatus sayfaları gelince bu placeholder'lar
+// gerçek import'larla değiştirilecek — App shell'in kendisi bu commit'in konusu.
 
-function App() {
-  const [count, setCount] = useState(0)
+type View = 'issue' | 'track';
 
-  return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.tsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
-
-      <div className="ticks"></div>
-
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
-
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
-  )
+function shortAddr(pk: PublicKey): string {
+  const s = pk.toBase58();
+  return `${s.slice(0, 4)}…${s.slice(-4)}`;
 }
 
-export default App
+/** UBLP'nin App.tsx'inden adapte edilen shell deseni (header/brand/nav/main) — ama
+ * sabit bir "rol"/login kavramı yok (dış inceleme notu: rol, bağlı cüzdanın o spesifik
+ * B/L'yle ilişkisinden dinamik hesaplanıyor, bkz. BlStatus.tsx). Header sadece bağlı
+ * cüzdanı gösterir; UBLP'nin InstanceSwitcher'ı yok — Phantom'ın kendi hesap
+ * değiştiricisi aynı işi görüyor (wallet.ts'teki accountChanged dinleyicisi sayesinde). */
+const App: React.FC = () => {
+  const { publicKey, connecting, error, connect, disconnect } = usePhantomWallet();
+  const [view, setView] = useState<View>('track');
+  const [openedMint, setOpenedMint] = useState<PublicKey | null>(null);
+
+  return (
+    <div className="app-shell">
+      <header className="app-header">
+        <div className="brand-block">
+          <span className="brand-mark" />
+          <span className="brand">Logistics-bl-nft</span>
+          <h1>Bill of Lading NFT</h1>
+        </div>
+        <div className="header-meta">
+          {publicKey ? (
+            <>
+              <span className="network-badge">
+                <span className="dot" />
+                devnet
+              </span>
+              <span className="role-badge" title={publicKey.toBase58()}>
+                {shortAddr(publicKey)}
+              </span>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={disconnect}>
+                Bağlantıyı kes
+              </button>
+            </>
+          ) : (
+            <button type="button" className="btn btn-primary btn-sm" disabled={connecting} onClick={connect}>
+              {connecting ? 'Bağlanıyor…' : 'Phantom bağla'}
+            </button>
+          )}
+        </div>
+      </header>
+
+      {error && (
+        <div className="alert alert-error" role="alert">
+          {error}
+        </div>
+      )}
+
+      <main className="app-main">
+        {openedMint ? (
+          <div className="card">
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setOpenedMint(null)}>
+              ← Back
+            </button>
+            <p className="empty-state">BlStatus sayfası commit 6'da gelecek. Açılan mint: {openedMint.toBase58()}</p>
+          </div>
+        ) : (
+          <>
+            <nav className="app-nav">
+              <button
+                type="button"
+                className={`btn btn-sm ${view === 'issue' ? 'btn-primary' : ''}`}
+                onClick={() => setView('issue')}
+              >
+                Issue
+              </button>
+              <button
+                type="button"
+                className={`btn btn-sm ${view === 'track' ? 'btn-primary' : ''}`}
+                onClick={() => setView('track')}
+              >
+                Track
+              </button>
+            </nav>
+            {view === 'issue' && <div className="card">IssueBl sayfası commit 5'te gelecek.</div>}
+            {view === 'track' && <div className="card">TrackBl sayfası commit 6'da gelecek.</div>}
+          </>
+        )}
+      </main>
+    </div>
+  );
+};
+
+export default App;
