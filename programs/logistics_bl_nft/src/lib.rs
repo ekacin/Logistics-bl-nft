@@ -19,6 +19,10 @@ pub mod logistics_bl_nft {
         crate::instructions::create_draft::handle_create_draft(ctx, draft_id, content_hash)
     }
 
+    pub fn approve_draft(ctx: Context<ApproveDraft>) -> Result<()> {
+        crate::instructions::approve_draft::handle_approve_draft(ctx)
+    }
+
     pub fn issue_bl(ctx: Context<IssueBl>) -> Result<()> {
         crate::instructions::issue_bl::handle_issue_bl(ctx)
     }
