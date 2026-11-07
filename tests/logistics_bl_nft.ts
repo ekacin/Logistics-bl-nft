@@ -104,6 +104,14 @@ describe("logistics_bl_nft — çekirdek B/L akışı", () => {
       .rpc();
   }
 
+  async function cancelDraft(draft: anchor.web3.PublicKey, signer = carrier) {
+    await program.methods
+      .cancelDraft()
+      .accountsPartial({ carrier: signer.publicKey, draft })
+      .signers([signer])
+      .rpc();
+  }
+
   async function issueBl(mint: anchor.web3.Keypair) {
     const draftId = nextDraftId();
     const draft = await createDraft(draftId);
@@ -387,5 +395,34 @@ describe("logistics_bl_nft — çekirdek B/L akışı", () => {
       expect((err as Error).toString()).to.match(/DraftNotApproved|6002/);
     }
     expect(threw, "Consumed taslakla ikinci issue_bl BAŞARILI olmamalıydı").to.equal(true);
+  });
+
+  it("cancel_draft: onaylanmamış taslak iptal edilip rent carrier'a döner", async () => {
+    const draftId = nextDraftId();
+    const draft = await createDraft(draftId);
+
+    const balanceBefore = await connection.getBalance(carrier.publicKey);
+    await cancelDraft(draft);
+    const balanceAfter = await connection.getBalance(carrier.publicKey);
+
+    expect(balanceAfter, "cancel_draft rent'i carrier'a iade etmeliydi").to.be.greaterThan(balanceBefore);
+
+    const accountInfo = await connection.getAccountInfo(draft);
+    expect(accountInfo, "iptal edilen draft hesabı kapatılmış olmalıydı").to.equal(null);
+  });
+
+  it("Negatif: onaylanmış bir taslak cancel_draft ile iptal edilemez", async () => {
+    const draftId = nextDraftId();
+    const draft = await createDraft(draftId);
+    await approveDraft(draft);
+
+    let threw = false;
+    try {
+      await cancelDraft(draft);
+    } catch (err) {
+      threw = true;
+      expect((err as Error).toString()).to.match(/InvalidState|6000/);
+    }
+    expect(threw, "onaylanmış taslak cancel_draft ile BAŞARILI şekilde iptal edilmemeliydi").to.equal(true);
   });
 });

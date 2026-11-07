@@ -23,6 +23,10 @@ pub mod logistics_bl_nft {
         crate::instructions::approve_draft::handle_approve_draft(ctx)
     }
 
+    pub fn cancel_draft(ctx: Context<CancelDraft>) -> Result<()> {
+        crate::instructions::cancel_draft::handle_cancel_draft(ctx)
+    }
+
     pub fn issue_bl(ctx: Context<IssueBl>) -> Result<()> {
         crate::instructions::issue_bl::handle_issue_bl(ctx)
     }
