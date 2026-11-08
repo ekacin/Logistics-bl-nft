@@ -12,6 +12,15 @@ logistics_bl_nft = "Cv8LVQWVR6t59hPQfSyf9LmFsG9ueouz5iZKfiNJV7nN"
 cluster = "localnet"
 wallet = "~/.config/solana/id.json"
 
+# Metaplex Token Metadata, yerel validator'ın genesis'inde yok (System/Token gibi
+# native bir program değil) — issue_bl'in CreateMetadataAccountV3 CPI'ını test
+# edebilmek için devnet'teki gerçek deploy'undan klonlanıyor.
+[test.validator]
+url = "https://api.devnet.solana.com"
+
+[[test.validator.clone]]
+address = "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s"
+
 [scripts]
 test = "npx ts-mocha -p ./tsconfig.json -t 1000000 \"tests/**/*.ts\""
 

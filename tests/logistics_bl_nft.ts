@@ -13,6 +13,9 @@ import { LogisticsBlNft } from "../target/types/logistics_bl_nft";
 
 const { PublicKey, Keypair, SystemProgram, LAMPORTS_PER_SOL } = anchor.web3;
 
+// Metaplex Token Metadata — mainnet/devnet'te aynı adreste duran resmi program.
+const TOKEN_METADATA_PROGRAM_ID = new PublicKey('metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s');
+
 async function airdrop(connection: anchor.web3.Connection, pubkey: anchor.web3.PublicKey, sol = 5) {
   const sig = await connection.requestAirdrop(pubkey, sol * LAMPORTS_PER_SOL);
   const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
@@ -57,7 +60,11 @@ describe("logistics_bl_nft — çekirdek B/L akışı", () => {
     );
     const shipperAta = getAssociatedTokenAddressSync(mint, shipper.publicKey);
     const buyerAta = getAssociatedTokenAddressSync(mint, buyer.publicKey);
-    return { blState, vault, surrenderRequest, shipperAta, buyerAta };
+    const [metadata] = PublicKey.findProgramAddressSync(
+      [Buffer.from('metadata'), TOKEN_METADATA_PROGRAM_ID.toBuffer(), mint.toBuffer()],
+      TOKEN_METADATA_PROGRAM_ID
+    );
+    return { blState, vault, surrenderRequest, shipperAta, buyerAta, metadata };
   }
 
   // Onay kapısı: draft_id carrier tarafından verilir (panelde timestamp kullanılacak
@@ -117,7 +124,7 @@ describe("logistics_bl_nft — çekirdek B/L akışı", () => {
     const draft = await createDraft(draftId);
     await approveDraft(draft);
 
-    const { blState, shipperAta } = deriveAddresses(mint.publicKey);
+    const { blState, shipperAta, metadata } = deriveAddresses(mint.publicKey);
     await program.methods
       .issueBl()
       .accountsPartial({
@@ -127,6 +134,8 @@ describe("logistics_bl_nft — çekirdek B/L akışı", () => {
         mint: mint.publicKey,
         shipperAta,
         blState,
+        metadata,
+        tokenMetadataProgram: TOKEN_METADATA_PROGRAM_ID,
         tokenProgram: TOKEN_PROGRAM_ID,
         associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
         systemProgram: SystemProgram.programId,
@@ -303,7 +312,7 @@ describe("logistics_bl_nft — çekirdek B/L akışı", () => {
     const draftId = nextDraftId();
     const draft = await createDraft(draftId); // onaylanmadı
 
-    const { blState, shipperAta } = deriveAddresses(mint.publicKey);
+    const { blState, shipperAta, metadata } = deriveAddresses(mint.publicKey);
 
     let threw = false;
     try {
@@ -316,6 +325,8 @@ describe("logistics_bl_nft — çekirdek B/L akışı", () => {
           mint: mint.publicKey,
           shipperAta,
           blState,
+          metadata,
+          tokenMetadataProgram: TOKEN_METADATA_PROGRAM_ID,
           tokenProgram: TOKEN_PROGRAM_ID,
           associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
           systemProgram: SystemProgram.programId,
@@ -352,7 +363,7 @@ describe("logistics_bl_nft — çekirdek B/L akışı", () => {
 
     // İlk kullanım başarılı olmalı.
     const mint1 = Keypair.generate();
-    const { blState: blState1, shipperAta: shipperAta1 } = deriveAddresses(mint1.publicKey);
+    const { blState: blState1, shipperAta: shipperAta1, metadata: metadata1 } = deriveAddresses(mint1.publicKey);
     await program.methods
       .issueBl()
       .accountsPartial({
@@ -362,6 +373,8 @@ describe("logistics_bl_nft — çekirdek B/L akışı", () => {
         mint: mint1.publicKey,
         shipperAta: shipperAta1,
         blState: blState1,
+        metadata: metadata1,
+        tokenMetadataProgram: TOKEN_METADATA_PROGRAM_ID,
         tokenProgram: TOKEN_PROGRAM_ID,
         associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
         systemProgram: SystemProgram.programId,
@@ -371,7 +384,7 @@ describe("logistics_bl_nft — çekirdek B/L akışı", () => {
 
     // Aynı (artık Consumed) taslakla ikinci bir mint denemesi patlamalı.
     const mint2 = Keypair.generate();
-    const { blState: blState2, shipperAta: shipperAta2 } = deriveAddresses(mint2.publicKey);
+    const { blState: blState2, shipperAta: shipperAta2, metadata: metadata2 } = deriveAddresses(mint2.publicKey);
 
     let threw = false;
     try {
@@ -384,6 +397,8 @@ describe("logistics_bl_nft — çekirdek B/L akışı", () => {
           mint: mint2.publicKey,
           shipperAta: shipperAta2,
           blState: blState2,
+          metadata: metadata2,
+          tokenMetadataProgram: TOKEN_METADATA_PROGRAM_ID,
           tokenProgram: TOKEN_PROGRAM_ID,
           associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
           systemProgram: SystemProgram.programId,
