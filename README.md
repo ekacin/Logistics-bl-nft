@@ -48,6 +48,12 @@ That last instruction is the one piece of this design that has **no clean paper 
 - Every vault and escrow-style account is scoped to its own bill of lading; nothing shared is ever reused across unrelated transactions.
 - The timeout refund is permissionless by design — no party, including the carrier, can hold a buyer's property hostage by simply going quiet.
 
+### The actual document, without putting it on-chain
+
+A bill of lading is more than an ownership token — it's a document with real content: vessel, voyage, ports, cargo description, weight, number of originals. None of that content is ever written on-chain. When the carrier drafts a bill of lading, the frontend canonicalizes that document (sorted keys, no whitespace) and hashes it with SHA-256; only that 32-byte hash travels with the `create_draft` instruction and is later copied onto the issued bill of lading. The document itself — the actual JSON — moves between carrier, shipper, and buyer the same way a PDF scan would today: off-chain, by whatever channel the parties already use.
+
+This is deliberate, and it's the same pattern used by every production electronic bill of lading platform (TradeTrust/OpenAttestation, CargoX, WaveBL): the chain's only job is to answer "has this specific document been tampered with since it was issued?", not to be a document store. Anyone holding a copy of the document — the shipper before approving a draft, a buyer before relying on a bill of lading, in principle a bank before extending credit against it — can recompute the hash themselves and compare it to the one on-chain, with no server and no trusted intermediary involved. A single changed character anywhere in the document produces a completely different hash, so a tampered or substituted document is caught instantly rather than relying on anyone's word that "this is the real one."
+
 ## What this does not solve (yet)
 
 Being honest about scope matters more than overstating it:
