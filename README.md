@@ -64,6 +64,15 @@ Being honest about scope matters more than overstating it:
 - **Legal enforceability has not been verified in any specific jurisdiction.** The technical design satisfies MLETR's exclusive-control test; whether a given country's courts currently recognize that is a separate, unanswered question.
 - **The redemption window is artificially short for demo purposes** (tens of seconds instead of the days a real shipment would need) so the full lifecycle can be shown live without an hours-long wait.
 
+## Deployed on devnet
+
+| | |
+|---|---|
+| Program ID | `Cv8LVQWVR6t59hPQfSyf9LmFsG9ueouz5iZKfiNJV7nN` |
+| Explorer | https://explorer.solana.com/address/Cv8LVQWVR6t59hPQfSyf9LmFsG9ueouz5iZKfiNJV7nN?cluster=devnet |
+
+The deployed bytecode has been verified against the local build (`solana program dump` + `sha256sum`, matching byte for byte apart from the loader's own zero-padding) — what's on devnet is what's in this repo, not a stale or hand-edited copy.
+
 ## Running it
 
 ```sh
