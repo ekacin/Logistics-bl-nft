@@ -16,23 +16,23 @@ import {
 import { type BlDocument, DOCUMENT_FIELDS, canonicalHash, hashesEqual, isZeroHash, parseDocument } from '../document';
 
 const FIELD_LABELS: Record<keyof BlDocument, string> = {
-  document_id: 'Belge ID',
-  date_of_issue: 'Düzenleme tarihi',
-  place_of_issue: 'Düzenleme yeri',
-  shipper: 'Shipper (ad/adres)',
-  consignee: 'Consignee (alıcı, ad/adres)',
+  document_id: 'Document ID',
+  date_of_issue: 'Date of issue',
+  place_of_issue: 'Place of issue',
+  shipper: 'Shipper (name/address)',
+  consignee: 'Consignee (buyer, name/address)',
   notify_party: 'Notify party',
-  vessel: 'Gemi adı',
-  voyage_no: 'Sefer no',
-  port_of_loading: 'Yükleme limanı',
-  port_of_discharge: 'Boşaltma limanı',
-  marks_and_numbers: 'İşaret ve numaralar',
-  number_of_packages: 'Koli/paket sayısı',
-  description_of_goods: 'Eşya tanımı',
-  gross_weight: 'Brüt ağırlık',
-  measurement: 'Hacim',
-  freight_terms: 'Navlun şartı',
-  number_of_originals: 'Orijinal nüsha sayısı',
+  vessel: 'Vessel name',
+  voyage_no: 'Voyage no.',
+  port_of_loading: 'Port of loading',
+  port_of_discharge: 'Port of discharge',
+  marks_and_numbers: 'Marks and numbers',
+  number_of_packages: 'Number of packages',
+  description_of_goods: 'Description of goods',
+  gross_weight: 'Gross weight',
+  measurement: 'Measurement',
+  freight_terms: 'Freight terms',
+  number_of_originals: 'Number of originals',
 };
 
 interface DraftStatusProps {
@@ -40,14 +40,14 @@ interface DraftStatusProps {
   onIssued: (mint: PublicKey) => void;
 }
 
-/** Onay kapısının tek, ortak durumu sayfası — BlStatus.tsx'teki "kapasiteye göre aksiyon"
- * deseniyle aynı: hiçbir state tarayıcıda/sekmede taşınmıyor, her şey adresi yapıştırınca
- * zincirden okunuyor. Bu yüzden carrier "Issue" sekmesinde taslak oluşturup "Approve Draft"
- * sekmesine gidip geri dönse bile hiçbir şey kaybolmaz — aynı draft adresini buraya
- * yapıştırdığı an gerçek durum görünür. Üç olası kapasite:
- *  - Shipper, status==draft  → Onayla
- *  - Carrier,  status==draft  → İptal et (rent geri döner)
- *  - Carrier,  status==approved → Issue B/L (mint eder) */
+/** The approval gate's single, shared status page — same "capacity-driven action" pattern
+ * as BlStatus.tsx: no state is carried in the browser/tab, everything is re-read from
+ * chain as soon as the address is pasted. So even if the carrier creates a draft on the
+ * "Issue" tab, switches away, and comes back, nothing is lost — pasting the same draft
+ * address here always shows the real on-chain state. Three possible capacities:
+ *  - Shipper, status==draft  → Approve
+ *  - Carrier,  status==draft  → Cancel (rent is returned)
+ *  - Carrier,  status==approved → Issue B/L (mints) */
 const DraftStatus: React.FC<DraftStatusProps> = ({ wallet, onIssued }) => {
   const [input, setInput] = useState('');
   const [draft, setDraft] = useState<PublicKey | null>(null);
@@ -65,9 +65,9 @@ const DraftStatus: React.FC<DraftStatusProps> = ({ wallet, onIssued }) => {
 
   const hashIsZero = !!draftState && isZeroHash(draftState.contentHash);
 
-  // Farklı bir draft adresi açılınca (Back → yeni adres → Open) önceki belge state'i
-  // kalıyordu — canlı testte bulunan hata: yanlış taslağa karşı "eşleşiyor" gibi
-  // görünebilirdi. Draft değişince belge alanı sıfırlanır.
+  // Opening a different draft address (Back → new address → Open) used to leave the
+  // previous document state behind — a real bug found via live testing: it could look
+  // like a "match" against the wrong draft. Document state resets when the draft changes.
   useEffect(() => {
     setDocText('');
     setUploadedDoc(null);
@@ -75,8 +75,9 @@ const DraftStatus: React.FC<DraftStatusProps> = ({ wallet, onIssued }) => {
     setDocMatch(null);
   }, [draft?.toBase58()]);
 
-  // Belge yapıştırılınca/yüklenince ayrıştır, hash'ini hesapla, draft.content_hash ile
-  // karşılaştır — belge hiç zincire gitmiyor, sadece bu karşılaştırma tarayıcıda olur.
+  // Once a document is pasted/uploaded, parse it, hash it, and compare against
+  // draft.content_hash — the document never goes on-chain, this comparison happens
+  // entirely in the browser.
   useEffect(() => {
     if (!docText.trim() || !draftState) {
       setUploadedDoc(null);
@@ -88,7 +89,7 @@ const DraftStatus: React.FC<DraftStatusProps> = ({ wallet, onIssued }) => {
     if (!parsed) {
       setUploadedDoc(null);
       setDocMatch(null);
-      setDocError('Bu metin geçerli bir belge JSON\'u değil (beklenen alanlardan biri eksik/string değil).');
+      setDocError('This text is not a valid document JSON (one of the expected fields is missing or not a string).');
       return;
     }
     setUploadedDoc(parsed);
@@ -117,9 +118,9 @@ const DraftStatus: React.FC<DraftStatusProps> = ({ wallet, onIssued }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draft?.toBase58()]);
 
-  // issue_bl geçince draft "consumed" olur ama mint adresi hiçbir yerde kalıcı
-  // tutulmaz — draft_ref'e göre zincirden geriye doğru arayıp hangi B/L'nin bu
-  // taslaktan doğduğunu buluyoruz (kayıp "sonuç ekranı" sorununu kalıcı çözer).
+  // Once issue_bl runs, the draft becomes "consumed" but the mint address isn't stored
+  // anywhere persistent — we search backwards on-chain by draft_ref to find which B/L
+  // was born from this draft (permanently fixes the lost "result screen" problem).
   useEffect(() => {
     if (!draft || draftState?.status !== 'consumed') {
       setResultingBl(null);
@@ -135,12 +136,12 @@ const DraftStatus: React.FC<DraftStatusProps> = ({ wallet, onIssued }) => {
     try {
       setDraft(new PublicKey(input.trim()));
     } catch {
-      setError('Geçersiz Solana adresi.');
+      setError('Invalid Solana address.');
     }
   };
 
   const walletLike = (): WalletLike => {
-    if (!wallet.publicKey || !wallet.provider) throw new Error('Önce Phantom bağla.');
+    if (!wallet.publicKey || !wallet.provider) throw new Error('Connect Phantom first.');
     const provider = wallet.provider;
     return { publicKey: wallet.publicKey, signTransaction: (tx) => provider.signTransaction(tx) };
   };
@@ -152,17 +153,17 @@ const DraftStatus: React.FC<DraftStatusProps> = ({ wallet, onIssued }) => {
   const canIssue = isCarrier && draftState?.status === 'approved';
 
   const capacityLabel = (() => {
-    if (!wallet.publicKey) return 'Cüzdan bağlı değil — salt okunur görüntülüyorsun.';
+    if (!wallet.publicKey) return 'No wallet connected — read-only view.';
     const labels: string[] = [];
-    if (isCarrier) labels.push("Carrier'sın");
-    if (isShipper) labels.push("Shipper'sın");
-    if (labels.length === 0) labels.push('Bu taslakla ilgin yok (salt okunur)');
+    if (isCarrier) labels.push("You're the carrier");
+    if (isShipper) labels.push("You're the shipper");
+    if (labels.length === 0) labels.push("You have no relation to this draft (read-only)");
     return labels.join(' · ');
   })();
 
   const handleApprove = async () => {
     if (!draft) return;
-    setBusy('Onaylanıyor…');
+    setBusy('Approving…');
     setError(null);
     try {
       await approveDraft(connection, walletLike(), draft);
@@ -175,7 +176,7 @@ const DraftStatus: React.FC<DraftStatusProps> = ({ wallet, onIssued }) => {
 
   const handleCancel = async () => {
     if (!draft) return;
-    setBusy('Taslak iptal ediliyor…');
+    setBusy('Cancelling draft…');
     setError(null);
     try {
       await cancelDraft(connection, walletLike(), draft);
@@ -191,7 +192,7 @@ const DraftStatus: React.FC<DraftStatusProps> = ({ wallet, onIssued }) => {
 
   const handleIssue = async () => {
     if (!draft || !draftState) return;
-    setBusy('B/L oluşturuluyor…');
+    setBusy('Issuing B/L…');
     setError(null);
     try {
       const { mint } = await issueBl(connection, walletLike(), draftState.shipper, draft);
@@ -209,13 +210,13 @@ const DraftStatus: React.FC<DraftStatusProps> = ({ wallet, onIssued }) => {
         <h2 className="section-title">Draft status</h2>
         <div className="card">
           <p className="empty-state" style={{ marginTop: 0 }}>
-            Taslağın adresini yapıştır — carrier'san kendi oluşturduğun, shipper'san
-            carrier'ın sana verdiği adres.
+            Paste the draft's address — if you're the carrier, the one you created; if
+            you're the shipper, the one the carrier gave you.
           </p>
           <form className="open-deal-form" onSubmit={openDraft}>
             <input
               type="text"
-              placeholder="Draft adresi"
+              placeholder="Draft address"
               value={input}
               onChange={(e) => setInput(e.target.value)}
               required
@@ -253,7 +254,7 @@ const DraftStatus: React.FC<DraftStatusProps> = ({ wallet, onIssued }) => {
           <div className="blocking-card">
             <div className="spinner" />
             <div className="blocking-title">{busy}</div>
-            <div className="blocking-sub">Phantom'da imza isteği gelecek — onaylamayı unutma.</div>
+            <div className="blocking-sub">Phantom will ask you to sign — don't forget to approve.</div>
           </div>
         </div>
       )}
@@ -261,11 +262,11 @@ const DraftStatus: React.FC<DraftStatusProps> = ({ wallet, onIssued }) => {
       <div className="card">
         <div className="deal-address">{draft.toBase58()}</div>
 
-        {notFound && <p className="empty-state">Bu adreste bir taslak bulunamadı (iptal edilmiş ya da yanlış adres olabilir).</p>}
+        {notFound && <p className="empty-state">No draft found at this address (it may have been cancelled, or the address is wrong).</p>}
 
         {draftState && (
           <dl className="status-grid">
-            <dt>Durum</dt>
+            <dt>Status</dt>
             <dd>
               <span
                 className={`badge ${
@@ -281,29 +282,29 @@ const DraftStatus: React.FC<DraftStatusProps> = ({ wallet, onIssued }) => {
             <dd>{draftState.carrier.toBase58()}</dd>
             <dt>Shipper</dt>
             <dd>{draftState.shipper.toBase58()}</dd>
-            <dt>Senin kapasiten</dt>
+            <dt>Your role here</dt>
             <dd>{capacityLabel}</dd>
           </dl>
         )}
 
         {draftState?.status === 'draft' && (
           <>
-            <h3 className="form-section-label">Belge</h3>
+            <h3 className="form-section-label">Document</h3>
             {hashIsZero ? (
-              <p className="empty-state">Bu taslağa belge bağlanmamış (eski kayıt) — onay için belge gerekmiyor.</p>
+              <p className="empty-state">No document is attached to this draft (legacy record) — approval doesn't require one.</p>
             ) : (
               <>
-                {/* Doğrulama herkese açık (salt okunur, imza gerektirmez) — sadece
-                    Onayla butonu isShipper+docMatch'e kilitli. Carrier/denetleyen
-                    biri de göndermeden önce aynı belgeyi kontrol edebilsin. */}
+                {/* Verification is public (read-only, no signature needed) — only the
+                    Approve button is gated to isShipper+docMatch. The carrier or an
+                    auditor can also check the same document before it's sent along. */}
                 <p className="form-section-hint">
-                  Carrier'ın zincir dışında (e-posta vb.) ilettiği belgeyi yükle ya da yapıştır —
-                  onaylamadan önce zincirdeki hash ile eşleştiğini doğrula.
+                  Upload or paste the document the carrier sent you off-chain (email, etc.) —
+                  verify it matches the on-chain hash before approving.
                 </p>
                 <input type="file" accept=".json,application/json" onChange={handleFileUpload} />
                 <textarea
                   rows={4}
-                  placeholder="...ya da belge JSON'unu buraya yapıştır"
+                  placeholder="...or paste the document JSON here"
                   value={docText}
                   onChange={(e) => setDocText(e.target.value)}
                   style={{ width: '100%', marginTop: 8, fontFamily: 'var(--mono)', fontSize: 12.5 }}
@@ -317,8 +318,8 @@ const DraftStatus: React.FC<DraftStatusProps> = ({ wallet, onIssued }) => {
                   <>
                     <div className={`alert ${docMatch ? 'alert-success' : 'alert-error'}`} role="alert">
                       {docMatch
-                        ? '✓ Belge zincirdeki taslakla eşleşiyor.'
-                        : '✗ Bu belge bu taslağa ait değil — hash eşleşmiyor.'}
+                        ? '✓ Document matches the on-chain draft.'
+                        : "✗ This document doesn't belong to this draft — hash mismatch."}
                     </div>
                     <dl className="status-grid">
                       {DOCUMENT_FIELDS.map((field) => (
@@ -337,12 +338,12 @@ const DraftStatus: React.FC<DraftStatusProps> = ({ wallet, onIssued }) => {
 
         {canApprove && (
           <button type="button" className="btn btn-primary" disabled={busy !== null} onClick={() => void handleApprove()}>
-            Onayla
+            Approve
           </button>
         )}
         {canCancel && (
           <button type="button" className="btn btn-ghost btn-sm" disabled={busy !== null} onClick={() => void handleCancel()}>
-            Taslağı iptal et
+            Cancel draft
           </button>
         )}
         {canIssue && (
@@ -354,11 +355,11 @@ const DraftStatus: React.FC<DraftStatusProps> = ({ wallet, onIssued }) => {
         {draftState?.status === 'consumed' && (
           <>
             <p className="empty-state">
-              Bu taslak zaten mint edilmiş. {resultingBl ? 'Doğan B/L aşağıda:' : 'B/L aranıyor…'}
+              This draft has already been minted. {resultingBl ? 'The resulting B/L is below:' : 'Looking up the B/L…'}
             </p>
             {resultingBl && (
               <button type="button" className="btn btn-primary" onClick={() => onIssued(resultingBl.mint)}>
-                B/L'yi aç ({resultingBl.mint.toBase58().slice(0, 4)}…{resultingBl.mint.toBase58().slice(-4)})
+                Open B/L ({resultingBl.mint.toBase58().slice(0, 4)}…{resultingBl.mint.toBase58().slice(-4)})
               </button>
             )}
           </>

@@ -60,7 +60,7 @@ export function usePhantomWallet(): WalletState {
 
   const connect = useCallback(async () => {
     if (!provider) {
-      setError('Phantom bulunamadı — tarayıcı eklentisi kurulu mu?');
+      setError('Phantom not found — is the browser extension installed?');
       return;
     }
     setConnecting(true);

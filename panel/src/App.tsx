@@ -43,12 +43,12 @@ const App: React.FC = () => {
                 {shortAddr(publicKey)}
               </span>
               <button type="button" className="btn btn-ghost btn-sm" onClick={disconnect}>
-                Bağlantıyı kes
+                Disconnect
               </button>
             </>
           ) : (
             <button type="button" className="btn btn-primary btn-sm" disabled={connecting} onClick={connect}>
-              {connecting ? 'Bağlanıyor…' : 'Phantom bağla'}
+              {connecting ? 'Connecting…' : 'Connect Phantom'}
             </button>
           )}
         </div>

@@ -25,23 +25,23 @@ interface BlStatusProps {
 }
 
 const FIELD_LABELS: Record<keyof BlDocument, string> = {
-  document_id: 'Belge ID',
-  date_of_issue: 'Düzenleme tarihi',
-  place_of_issue: 'Düzenleme yeri',
-  shipper: 'Shipper (ad/adres)',
-  consignee: 'Consignee (alıcı, ad/adres)',
+  document_id: 'Document ID',
+  date_of_issue: 'Date of issue',
+  place_of_issue: 'Place of issue',
+  shipper: 'Shipper (name/address)',
+  consignee: 'Consignee (buyer, name/address)',
   notify_party: 'Notify party',
-  vessel: 'Gemi adı',
-  voyage_no: 'Sefer no',
-  port_of_loading: 'Yükleme limanı',
-  port_of_discharge: 'Boşaltma limanı',
-  marks_and_numbers: 'İşaret ve numaralar',
-  number_of_packages: 'Koli/paket sayısı',
-  description_of_goods: 'Eşya tanımı',
-  gross_weight: 'Brüt ağırlık',
-  measurement: 'Hacim',
-  freight_terms: 'Navlun şartı',
-  number_of_originals: 'Orijinal nüsha sayısı',
+  vessel: 'Vessel name',
+  voyage_no: 'Voyage no.',
+  port_of_loading: 'Port of loading',
+  port_of_discharge: 'Port of discharge',
+  marks_and_numbers: 'Marks and numbers',
+  number_of_packages: 'Number of packages',
+  description_of_goods: 'Description of goods',
+  gross_weight: 'Gross weight',
+  measurement: 'Measurement',
+  freight_terms: 'Freight terms',
+  number_of_originals: 'Number of originals',
 };
 
 const STATE_BADGE_CLASS: Record<string, string> = {
@@ -52,13 +52,14 @@ const STATE_BADGE_CLASS: Record<string, string> = {
 
 const NOW_TICK_MS = 5_000;
 
-/** UBLP'nin DealStatus.tsx'inden adapte — Stepper + status kartı + busy-overlay + aksiyon
- * butonları deseni aynı, ama "rol" bağlı cüzdanın bu spesifik B/L ile gerçek ilişkisinden
- * canlı hesaplanıyor (sabit bir login/whoAmI yok, dış inceleme notu): carrier mi
- * (bl_state.carrier ile eşleşme), token'ı şu an tutan mı (kendi ATA bakiyesi), yoksa
- * sadece timeout refund'a uygun mu (permissionless, herkese açık). Canlı güncelleme
- * watchBlState ile (connection.onAccountChange — Midnight indexer subscription'ının
- * Solana karşılığı), UBLP'nin GraphQL indexerWatch.ts'i yerine. */
+/** Adapted from UBLP's DealStatus.tsx — same Stepper + status card + busy-overlay + action
+ * button pattern, but "role" is computed live from the connected wallet's actual
+ * relationship to this specific B/L (no fixed login/whoAmI, per external review): is it
+ * the carrier (matches bl_state.carrier), does it currently hold the token (its own ATA
+ * balance), or is it merely eligible for the timeout refund (permissionless, open to
+ * anyone). Live updates via watchBlState (connection.onAccountChange — the Solana
+ * equivalent of UBLP's GraphQL indexer subscription), in place of UBLP's
+ * indexerWatch.ts. */
 const BlStatus: React.FC<BlStatusProps> = ({ mint, wallet, onClose }) => {
   const [blState, setBlState] = useState<BlState | null>(null);
   const [surrenderRequest, setSurrenderRequest] = useState<SurrenderRequestState | null>(null);
@@ -79,8 +80,8 @@ const BlStatus: React.FC<BlStatusProps> = ({ mint, wallet, onClose }) => {
 
   const hashIsZero = !!blState && isZeroHash(blState.preIssuanceHash);
 
-  // Farklı bir mint açılınca belge-doğrulama state'i kalmasın diye (DraftStatus.tsx'te
-  // bulunan aynı hata sınıfı) — mint değişince belge alanı sıfırlanır.
+  // Reset document-verification state when a different mint is opened (same bug class
+  // found in DraftStatus.tsx) — document fields reset when the mint changes.
   useEffect(() => {
     setDocText('');
     setUploadedDoc(null);
@@ -99,7 +100,7 @@ const BlStatus: React.FC<BlStatusProps> = ({ mint, wallet, onClose }) => {
     if (!parsed) {
       setUploadedDoc(null);
       setDocMatch(null);
-      setDocError('Bu metin geçerli bir belge JSON\'u değil (beklenen alanlardan biri eksik/string değil).');
+      setDocError('This text is not a valid document JSON (one of the expected fields is missing or not a string).');
       return;
     }
     setUploadedDoc(parsed);
@@ -167,17 +168,17 @@ const BlStatus: React.FC<BlStatusProps> = ({ mint, wallet, onClose }) => {
   const canClaimRefund = !!wallet.publicKey && blState?.status === 'surrenderRequested' && deadlinePassed;
 
   const capacityLabel = (() => {
-    if (!wallet.publicKey) return 'Cüzdan bağlı değil — salt okunur görüntülüyorsun.';
+    if (!wallet.publicKey) return 'No wallet connected — read-only view.';
     const labels: string[] = [];
-    if (isCarrier) labels.push("Carrier'sın");
-    if (isHolder) labels.push('Bu B/L şu an sende — NFT\'yi tutuyorsun');
-    if (canClaimRefund) labels.push("Timeout refund'u talep edebilirsin (permissionless, herkes çağırabilir)");
-    if (labels.length === 0) labels.push('Bu B/L ile ilgin yok (salt okunur)');
+    if (isCarrier) labels.push("You're the carrier");
+    if (isHolder) labels.push("You're holding this B/L right now — you have the NFT");
+    if (canClaimRefund) labels.push('You can claim the timeout refund (permissionless, anyone can call it)');
+    if (labels.length === 0) labels.push('You have no relation to this B/L (read-only)');
     return labels.join(' · ');
   })();
 
   const walletLike = (): WalletLike => {
-    if (!wallet.publicKey || !wallet.provider) throw new Error('Önce Phantom bağla.');
+    if (!wallet.publicKey || !wallet.provider) throw new Error('Connect Phantom first.');
     const provider = wallet.provider;
     return { publicKey: wallet.publicKey, signTransaction: (tx) => provider.signTransaction(tx) };
   };
@@ -201,10 +202,10 @@ const BlStatus: React.FC<BlStatusProps> = ({ mint, wallet, onClose }) => {
     try {
       to = new PublicKey(endorseTo.trim());
     } catch {
-      setActionError('Geçersiz Solana adresi.');
+      setActionError('Invalid Solana address.');
       return;
     }
-    void runAction('Endorse ediliyor…', async () => {
+    void runAction('Endorsing…', async () => {
       const sig = await endorse(connection, walletLike(), mint, to);
       setEndorseTo('');
       return sig;
@@ -223,7 +224,7 @@ const BlStatus: React.FC<BlStatusProps> = ({ mint, wallet, onClose }) => {
           <div className="blocking-card">
             <div className="spinner" />
             <div className="blocking-title">{busy}</div>
-            <div className="blocking-sub">Phantom'da imza isteği gelecek — onaylamayı unutma.</div>
+            <div className="blocking-sub">Phantom will ask you to sign — don't forget to approve.</div>
           </div>
         </div>
       )}
@@ -236,10 +237,10 @@ const BlStatus: React.FC<BlStatusProps> = ({ mint, wallet, onClose }) => {
             {error}
           </div>
         )}
-        {!blState && !error && !notFound && <p className="empty-state">Yükleniyor…</p>}
+        {!blState && !error && !notFound && <p className="empty-state">Loading…</p>}
         {notFound && !error && (
           <p className="empty-state">
-            Bu mint adresinde bir B/L bulunamadı. Henüz issue edilmemiş olabilir ya da adres yanlış.
+            No B/L found at this mint address. It may not have been issued yet, or the address is wrong.
           </p>
         )}
 
@@ -253,39 +254,40 @@ const BlStatus: React.FC<BlStatusProps> = ({ mint, wallet, onClose }) => {
             </dd>
             <dt>Carrier</dt>
             <dd>{blState.carrier.toBase58()}</dd>
-            <dt>Shipper (ilk alıcı)</dt>
+            <dt>Shipper (first holder)</dt>
             <dd>{blState.shipper.toBase58()}</dd>
             {surrenderRequest && (
               <>
-                <dt>Buyer (ibraz eden)</dt>
+                <dt>Buyer (surrendering)</dt>
                 <dd>{surrenderRequest.buyer.toBase58()}</dd>
                 <dt>Deadline</dt>
                 <dd>
                   {new Date(surrenderRequest.deadline * 1000).toLocaleString()}
-                  {deadlinePassed && ' — geçti'}
+                  {deadlinePassed && ' — passed'}
                 </dd>
               </>
             )}
-            <dt>Senin kapasiten</dt>
+            <dt>Your role here</dt>
             <dd>{capacityLabel}</dd>
           </dl>
         )}
 
         {blState && (
           <>
-            <h3 className="form-section-label">Belge doğrulama</h3>
+            <h3 className="form-section-label">Document verification</h3>
             {hashIsZero ? (
-              <p className="empty-state">Bu B/L'ye belge bağlanmamış (eski kayıt) — doğrulanacak hash yok.</p>
+              <p className="empty-state">No document is attached to this B/L (legacy record) — nothing to verify.</p>
             ) : (
               <>
                 <p className="form-section-hint">
-                  Eline geçen belgenin carrier'ın bastığı belge olduğunu kendi doğrula — belge
-                  hiçbir zaman zincire yazılmaz, sadece hash'i karşılaştırılır.
+                  Verify for yourself that the document you received is the one the carrier
+                  actually issued — the document is never written on-chain, only the hash is
+                  compared.
                 </p>
                 <input type="file" accept=".json,application/json" onChange={handleFileUpload} />
                 <textarea
                   rows={4}
-                  placeholder="...ya da belge JSON'unu buraya yapıştır"
+                  placeholder="...or paste the document JSON here"
                   value={docText}
                   onChange={(e) => setDocText(e.target.value)}
                   style={{ width: '100%', marginTop: 8, fontFamily: 'var(--mono)', fontSize: 12.5 }}
@@ -299,8 +301,8 @@ const BlStatus: React.FC<BlStatusProps> = ({ mint, wallet, onClose }) => {
                   <>
                     <div className={`alert ${docMatch ? 'alert-success' : 'alert-error'}`} role="alert">
                       {docMatch
-                        ? '✓ Belge zincirdeki B/L ile eşleşiyor.'
-                        : '✗ Bu belge bu B/L\'ye ait değil — hash eşleşmiyor.'}
+                        ? '✓ Document matches the on-chain B/L.'
+                        : "✗ This document doesn't belong to this B/L — hash mismatch."}
                     </div>
                     <dl className="status-grid">
                       {DOCUMENT_FIELDS.map((field) => (
@@ -319,11 +321,11 @@ const BlStatus: React.FC<BlStatusProps> = ({ mint, wallet, onClose }) => {
 
         {canEndorse && (
           <>
-            <h3 className="form-section-label">Endorse (ciro et)</h3>
+            <h3 className="form-section-label">Endorse</h3>
             <form className="open-deal-form" onSubmit={submitEndorse}>
               <input
                 type="text"
-                placeholder="Devredilecek adres"
+                placeholder="Address to transfer to"
                 value={endorseTo}
                 onChange={(e) => setEndorseTo(e.target.value)}
                 disabled={busy !== null}
@@ -343,9 +345,9 @@ const BlStatus: React.FC<BlStatusProps> = ({ mint, wallet, onClose }) => {
                 type="button"
                 className="btn btn-primary"
                 disabled={busy !== null}
-                onClick={() => void runAction('İbraz ediliyor…', () => requestSurrender(connection, walletLike(), mint))}
+                onClick={() => void runAction('Requesting surrender…', () => requestSurrender(connection, walletLike(), mint))}
               >
-                Request surrender (ibraz et)
+                Request surrender
               </button>
             )}
             {canProcessSurrender && (
@@ -353,7 +355,7 @@ const BlStatus: React.FC<BlStatusProps> = ({ mint, wallet, onClose }) => {
                 type="button"
                 className="btn btn-primary"
                 disabled={busy !== null}
-                onClick={() => void runAction('İşleniyor (redeem)…', () => processSurrender(connection, walletLike(), mint))}
+                onClick={() => void runAction('Processing (redeem)…', () => processSurrender(connection, walletLike(), mint))}
               >
                 Process surrender (redeem)
               </button>
@@ -363,7 +365,7 @@ const BlStatus: React.FC<BlStatusProps> = ({ mint, wallet, onClose }) => {
                 type="button"
                 className="btn btn-primary"
                 disabled={busy !== null}
-                onClick={() => void runAction('Refund alınıyor…', () => refundSurrenderTimeout(connection, walletLike(), mint))}
+                onClick={() => void runAction('Claiming refund…', () => refundSurrenderTimeout(connection, walletLike(), mint))}
               >
                 Claim timeout refund
               </button>

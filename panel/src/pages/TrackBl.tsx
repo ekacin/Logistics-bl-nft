@@ -20,7 +20,7 @@ const TrackBl: React.FC<TrackBlProps> = ({ onOpen }) => {
       const mint = new PublicKey(address.trim());
       onOpen(mint);
     } catch {
-      setError('Geçersiz Solana adresi.');
+      setError('Invalid Solana address.');
     }
   };
 
@@ -29,12 +29,12 @@ const TrackBl: React.FC<TrackBlProps> = ({ onOpen }) => {
       <h2 className="section-title">Track a B/L</h2>
       <div className="card">
         <p className="empty-state" style={{ marginTop: 0 }}>
-          Carrier'ın sana verdiği mint adresini (B/L'nin kimliği) yapıştır.
+          Paste the mint address (the B/L's identity) the carrier gave you.
         </p>
         <form className="open-deal-form" onSubmit={submit}>
           <input
             type="text"
-            placeholder="Mint adresi"
+            placeholder="Mint address"
             value={address}
             onChange={(e) => setAddress(e.target.value)}
             required

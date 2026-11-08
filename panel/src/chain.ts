@@ -362,7 +362,7 @@ export async function requestSurrender(connection: Connection, wallet: WalletLik
 /** Carrier çağırır — has_one=carrier kontrolü zincirde. Vault'taki token burn edilir. */
 export async function processSurrender(connection: Connection, wallet: WalletLike, mint: PublicKey): Promise<string> {
   const sr = await fetchSurrenderRequest(connection, mint);
-  if (!sr) throw new Error('Surrender request bulunamadı — önce request_surrender çağrılmış olmalı.');
+  if (!sr) throw new Error('Surrender request not found — request_surrender must be called first.');
   const program = getReadOnlyProgram(connection);
   const [blState] = deriveBlState(mint);
   const [vault] = deriveVault(mint);
@@ -389,7 +389,7 @@ export async function processSurrender(connection: Connection, wallet: WalletLik
  * türetiliyor, caller'ın geçtiği ham bir hesap değil. */
 export async function refundSurrenderTimeout(connection: Connection, wallet: WalletLike, mint: PublicKey): Promise<string> {
   const sr = await fetchSurrenderRequest(connection, mint);
-  if (!sr) throw new Error('Surrender request bulunamadı — önce request_surrender çağrılmış olmalı.');
+  if (!sr) throw new Error('Surrender request not found — request_surrender must be called first.');
   const program = getReadOnlyProgram(connection);
   const [blState] = deriveBlState(mint);
   const [vault] = deriveVault(mint);

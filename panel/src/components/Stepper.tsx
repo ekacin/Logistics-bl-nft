@@ -39,8 +39,8 @@ const Stepper: React.FC<StepperProps> = ({ status, deadlinePassed }) => {
       </ol>
       {stuck && (
         <p className="stepper-note stepper-note-warn">
-          Deadline geçti — ibraz zaman aşımına uğradı. NFT, timeout refund ile (herkes
-          çağırabilir) buyer'a iade edilip B/L yeniden "Issued" durumuna dönebilir.
+          Deadline passed — the surrender timed out. The NFT can be refunded to the buyer
+          via the timeout refund (anyone can call it), returning the B/L to "Issued".
         </p>
       )}
     </div>

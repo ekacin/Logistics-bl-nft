@@ -9,31 +9,32 @@ interface IssueBlProps {
 }
 
 const FIELD_LABELS: Record<keyof BlDocument, string> = {
-  document_id: 'Belge ID (otomatik)',
-  date_of_issue: 'Düzenleme tarihi',
-  place_of_issue: 'Düzenleme yeri',
-  shipper: 'Shipper (ad/adres)',
-  consignee: 'Consignee (alıcı, ad/adres)',
+  document_id: 'Document ID (auto)',
+  date_of_issue: 'Date of issue',
+  place_of_issue: 'Place of issue',
+  shipper: 'Shipper (name/address)',
+  consignee: 'Consignee (buyer, name/address)',
   notify_party: 'Notify party',
-  vessel: 'Gemi adı',
-  voyage_no: 'Sefer no',
-  port_of_loading: 'Yükleme limanı',
-  port_of_discharge: 'Boşaltma limanı',
-  marks_and_numbers: 'İşaret ve numaralar',
-  number_of_packages: 'Koli/paket sayısı',
-  description_of_goods: 'Eşya tanımı',
-  gross_weight: 'Brüt ağırlık',
-  measurement: 'Hacim',
-  freight_terms: 'Navlun şartı',
-  number_of_originals: 'Orijinal nüsha sayısı',
+  vessel: 'Vessel name',
+  voyage_no: 'Voyage no.',
+  port_of_loading: 'Port of loading',
+  port_of_discharge: 'Port of discharge',
+  marks_and_numbers: 'Marks and numbers',
+  number_of_packages: 'Number of packages',
+  description_of_goods: 'Description of goods',
+  gross_weight: 'Gross weight',
+  measurement: 'Measurement',
+  freight_terms: 'Freight terms',
+  number_of_originals: 'Number of originals',
 };
 
-/** Onay kapısının ilk adımı — taslak oluşturur VE şimdi gerçek bir belge içeriği de
- * alır (docs/plan-belge-hash.md). Belge zincire hiç yazılmıyor, sadece kanonik hash'i
- * (TradeTrust/CargoX/WaveBL'nin evrensel deseni) — carrier belgeyi indirip shipper'a
- * zincir dışında iletir, shipper "Draft Status" sekmesinde yükleyip doğrular. Devamı
- * (onay, iptal, mint etme) o sekmede: o sayfa adresi yapıştırınca zincirden okuduğu için
- * hiçbir state sekme geçişinde kaybolmaz. */
+/** First step of the approval gate — creates a draft AND now also takes a real document
+ * payload (docs/plan-belge-hash.md). The document itself is never written on-chain, only
+ * its canonical hash (the universal TradeTrust/CargoX/WaveBL pattern) — the carrier
+ * downloads the document and sends it to the shipper off-chain, who uploads and verifies
+ * it on the "Draft Status" tab. The rest (approve, cancel, mint) happens on that tab: since
+ * it re-reads from chain as soon as the address is pasted, no state is ever lost across a
+ * tab switch. */
 const IssueBl: React.FC<IssueBlProps> = ({ wallet }) => {
   const [shipper, setShipper] = useState('');
   const [doc, setDoc] = useState<BlDocument>(emptyDocument());
@@ -56,7 +57,7 @@ const IssueBl: React.FC<IssueBlProps> = ({ wallet }) => {
     try {
       shipperPk = new PublicKey(shipper.trim());
     } catch {
-      setError('Geçersiz Solana adresi.');
+      setError('Invalid Solana address.');
       return;
     }
 
@@ -94,21 +95,22 @@ const IssueBl: React.FC<IssueBlProps> = ({ wallet }) => {
     <div className="card">
       <h2 className="section-title">Create a draft</h2>
       <p className="action-note" style={{ marginTop: 0 }}>
-        Onay kapısının ilk adımı: shipper'ı önerirsin, belgeyi doldurursun — ama B/L hemen
-        basılmaz, shipper belgeyi görüp kendi cüzdanıyla onaylamadan mint edilemez. Belge
-        zincire yazılmaz, sadece hash'i yazılır — belgenin kendisini aşağıda indirip
-        shipper'a (e-posta vb. ile) sen ileteceksin.
+        First step of the approval gate: you propose the shipper and fill in the document —
+        but the B/L isn't minted yet, it can't be until the shipper sees the document and
+        approves it with their own wallet. The document is never written on-chain, only its
+        hash is — you'll download the document itself below and send it to the shipper
+        (by email, etc.) yourself.
       </p>
 
-      {!connected && <p className="empty-state">Önce Phantom bağla.</p>}
+      {!connected && <p className="empty-state">Connect Phantom first.</p>}
 
       <form onSubmit={handleCreateDraft} className="new-deal-form">
         <label>
-          Shipper'ın cüzdan adresi
+          Shipper's wallet address
           <input
             required
             type="text"
-            placeholder="Solana adresi"
+            placeholder="Solana address"
             value={shipper}
             onChange={(e) => setShipper(e.target.value)}
             disabled={!connected || busy}
@@ -116,10 +118,10 @@ const IssueBl: React.FC<IssueBlProps> = ({ wallet }) => {
         </label>
 
         <div className="form-section">
-          <h3 className="form-section-label">Belge içeriği</h3>
+          <h3 className="form-section-label">Document content</h3>
           <p className="form-section-hint">
-            Konşimento alanları — zincire yazılmaz, sadece kanonik hash'i Draft.content_hash'e
-            gider.
+            Bill of lading fields — never written on-chain, only their canonical hash goes
+            into Draft.content_hash.
           </p>
           {(Object.keys(FIELD_LABELS) as (keyof BlDocument)[])
             .filter((f) => f !== 'document_id')
@@ -138,32 +140,32 @@ const IssueBl: React.FC<IssueBlProps> = ({ wallet }) => {
         </div>
 
         <button type="submit" className="btn btn-primary" disabled={!connected || busy || !shipper.trim()}>
-          Taslak oluştur
+          Create draft
         </button>
       </form>
 
       {createdDraft && (
         <div className="status-grid" style={{ marginTop: 16 }}>
-          <dt>Oluşan draft adresi</dt>
+          <dt>Resulting draft address</dt>
           <dd>{createdDraft.toBase58()}</dd>
         </div>
       )}
       {createdDraft && (
         <>
           <p className="empty-state">
-            Bu draft adresini VE aşağıdaki belgeyi shipper'a ilet (zincir dışında — e-posta
-            vb.). Shipper <strong>Draft Status</strong> sekmesinde ikisini de kullanıp
-            doğrulayacak. Onaydan sonra sen (carrier) aynı adresi oraya yapıştırıp "Issue B/L"
-            ile mint edeceksin.
+            Send this draft address AND the document below to the shipper (off-chain — email,
+            etc.). The shipper will use both on the <strong>Draft Status</strong> tab to
+            verify and approve. Once approved, you (the carrier) paste the same address there
+            and mint with "Issue B/L".
           </p>
           <div className="queue-item-actions">
             {downloadHref && (
               <a href={downloadHref} download={`bl-draft-${createdDoc?.document_id ?? 'document'}.json`} className="btn btn-sm">
-                Belgeyi indir
+                Download document
               </a>
             )}
             <button type="button" className="btn btn-sm" onClick={() => void copyJson()}>
-              {copied ? 'Kopyalandı ✓' : "JSON'u kopyala"}
+              {copied ? 'Copied ✓' : 'Copy JSON'}
             </button>
           </div>
         </>
@@ -179,8 +181,8 @@ const IssueBl: React.FC<IssueBlProps> = ({ wallet }) => {
         <div className="blocking-overlay" role="alert" aria-busy="true">
           <div className="blocking-card">
             <div className="spinner" />
-            <div className="blocking-title">Taslak oluşturuluyor…</div>
-            <div className="blocking-sub">Phantom'da imza isteği gelecek — onaylamayı unutma.</div>
+            <div className="blocking-title">Creating draft…</div>
+            <div className="blocking-sub">Phantom will ask you to sign — don't forget to approve.</div>
           </div>
         </div>
       )}
