@@ -21,6 +21,12 @@ export const BL_STATE_SEED = Buffer.from('bl_state');
 export const VAULT_SEED = Buffer.from('vault');
 export const SURRENDER_REQUEST_SEED = Buffer.from('surrender_request');
 export const DRAFT_SEED = Buffer.from('draft');
+export const METADATA_SEED = Buffer.from('metadata');
+
+// Metaplex Token Metadata — mainnet ve devnet'te aynı adreste duran resmi program.
+// issue_bl artık NFT'nin cüzdanda "Unknown Token" yerine Name/Symbol göstermesi için
+// buna bir CreateMetadataAccountV3 CPI'ı yapıyor (bkz. programs/.../issue_bl.rs).
+export const TOKEN_METADATA_PROGRAM_ID = new PublicKey('metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s');
 
 function u64LeBytes(n: bigint): Buffer {
   const buf = Buffer.alloc(8);
@@ -42,6 +48,13 @@ export function deriveVault(mint: PublicKey): [PublicKey, number] {
 
 export function deriveSurrenderRequest(mint: PublicKey): [PublicKey, number] {
   return PublicKey.findProgramAddressSync([SURRENDER_REQUEST_SEED, mint.toBuffer()], PROGRAM_ID);
+}
+
+export function deriveMetadata(mint: PublicKey): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [METADATA_SEED, TOKEN_METADATA_PROGRAM_ID.toBuffer(), mint.toBuffer()],
+    TOKEN_METADATA_PROGRAM_ID
+  );
 }
 
 /** Salt okunur Program örneği — imza gerekmez, sadece connection yeterli (Provider
@@ -282,6 +295,7 @@ export async function issueBl(
   const program = getReadOnlyProgram(connection);
   const mint = Keypair.generate();
   const [blState] = deriveBlState(mint.publicKey);
+  const [metadata] = deriveMetadata(mint.publicKey);
   const shipperAta = getAssociatedTokenAddressSync(mint.publicKey, shipper);
 
   const ix = await program.methods
@@ -293,6 +307,8 @@ export async function issueBl(
       mint: mint.publicKey,
       shipperAta,
       blState,
+      metadata,
+      tokenMetadataProgram: TOKEN_METADATA_PROGRAM_ID,
       tokenProgram: TOKEN_PROGRAM_ID,
       associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
       systemProgram: SystemProgram.programId,
