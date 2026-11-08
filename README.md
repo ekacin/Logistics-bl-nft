@@ -31,7 +31,7 @@ One bill of lading = one SPL token, minted with `supply = 1` and `decimals = 0`.
 |---|---|---|
 | Carrier drafts the B/L naming a shipper | `create_draft` | Carrier proposes the shipper and a content hash. Nothing is minted yet — this is a proposal, not a document. |
 | Shipper agrees to be named on the document | `approve_draft` | The named shipper signs their own approval. Without this, nobody can be named as shipper against their will. |
-| Carrier issues the bill of lading | `issue_bl` | A fresh SPL mint is created and sent to the shipper's wallet. In the same transaction, the mint authority and freeze authority are both permanently revoked — nobody, including the carrier, can ever mint a second copy or freeze the holder's wallet as leverage. |
+| Carrier issues the bill of lading | `issue_bl` | A fresh SPL mint is created and sent to the shipper's wallet, with a Metaplex Token Metadata account attached (name "Bill of Lading", symbol "BL") so wallets and explorers show something meaningful instead of "Unknown Token." In the same transaction, the mint authority and freeze authority are both permanently revoked — nobody, including the carrier, can ever mint a second copy or freeze the holder's wallet as leverage. |
 | Seller endorses the B/L to a buyer | plain SPL token transfer | Endorsement is just a transfer of the token. No special instruction exists for it, because in the real world an endorsement is nothing more than a hand-off of the document — the chain doesn't need to know *why* it moved, only that it did. |
 | Buyer presents ("surrenders") the original to the carrier | `request_surrender` | The token is locked into a program-controlled vault and a redemption window opens. This is the digital equivalent of physically handing the document to the carrier's agent. |
 | Carrier verifies and releases the cargo | `process_surrender` | The token is burned. The document is "accomplished" — spent, and permanently incapable of being presented again. |
@@ -80,7 +80,7 @@ anchor build
 anchor test --validator legacy
 ```
 
-The `--validator legacy` flag matters: this Anchor toolchain defaults to a local validator called `surfpool`, which may not be installed. The flag falls back to the standard `solana-test-validator` instead, with no extra setup required.
+The `--validator legacy` flag matters: this Anchor toolchain defaults to a local validator called `surfpool`, which may not be installed. The flag falls back to the standard `solana-test-validator` instead. That local validator also clones the Metaplex Token Metadata program from devnet at startup (configured in `Anchor.toml`) so the `issue_bl` metadata CPI can be tested locally — this needs network access when the test suite first starts, but no other setup.
 
 ## Tests
 
