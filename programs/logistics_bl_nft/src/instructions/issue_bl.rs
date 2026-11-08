@@ -38,11 +38,11 @@ const CREATE_METADATA_ACCOUNT_V3_DISCRIMINATOR: u8 = 33;
 const BL_METADATA_NAME: &str = "Bill of Lading";
 const BL_METADATA_SYMBOL: &str = "BL";
 // Belge içeriği zaten zincire yazılmıyor (bkz. document.ts / pre_issuance_hash) — bu
-// metadata sadece cüzdanda "Unknown Token" yerine okunabilir bir isim/sembol göstermek
-// için var. Gerçek bir görsel/JSON eklemek Metaplex'in 200 byte URI sınırı nedeniyle
-// dışarıda herkese açık bir dosya barındırmayı gerektirir (data: URI'ler bu sınıra
-// sığmıyor) — bilinçli olarak bu PR'ın kapsamı dışında tutuldu, roadmap.
-const BL_METADATA_URI: &str = "";
+// metadata sadece cüzdanda "Unknown Token" yerine okunabilir bir isim/sembol/ikon
+// göstermek için var, B/L'nin gerçek içeriğiyle bir ilgisi yok (her B/L için aynı).
+// JSON + ikon kendi GitHub reposunda (assets/), raw.githubusercontent.com üzerinden
+// herkese açık barındırılıyor (bkz. assets/bl-metadata.json, assets/bl-icon.svg).
+const BL_METADATA_URI: &str = "https://raw.githubusercontent.com/ekacin/Logistics-bl-nft/main/assets/bl-metadata.json";
 
 #[derive(Accounts)]
 pub struct IssueBl<'info> {
