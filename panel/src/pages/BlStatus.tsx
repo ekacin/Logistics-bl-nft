@@ -15,6 +15,7 @@ import {
   requestSurrender,
   watchBlState,
 } from '../chain';
+import { type BlDocument, DOCUMENT_FIELDS, canonicalHash, hashesEqual, isZeroHash, parseDocument } from '../document';
 import Stepper from '../components/Stepper';
 
 interface BlStatusProps {
@@ -22,6 +23,26 @@ interface BlStatusProps {
   wallet: WalletState;
   onClose: () => void;
 }
+
+const FIELD_LABELS: Record<keyof BlDocument, string> = {
+  document_id: 'Belge ID',
+  date_of_issue: 'Düzenleme tarihi',
+  place_of_issue: 'Düzenleme yeri',
+  shipper: 'Shipper (ad/adres)',
+  consignee: 'Consignee (alıcı, ad/adres)',
+  notify_party: 'Notify party',
+  vessel: 'Gemi adı',
+  voyage_no: 'Sefer no',
+  port_of_loading: 'Yükleme limanı',
+  port_of_discharge: 'Boşaltma limanı',
+  marks_and_numbers: 'İşaret ve numaralar',
+  number_of_packages: 'Koli/paket sayısı',
+  description_of_goods: 'Eşya tanımı',
+  gross_weight: 'Brüt ağırlık',
+  measurement: 'Hacim',
+  freight_terms: 'Navlun şartı',
+  number_of_originals: 'Orijinal nüsha sayısı',
+};
 
 const STATE_BADGE_CLASS: Record<string, string> = {
   issued: 'badge',
@@ -49,8 +70,51 @@ const BlStatus: React.FC<BlStatusProps> = ({ mint, wallet, onClose }) => {
   const [busy, setBusy] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [endorseTo, setEndorseTo] = useState('');
+  const [docText, setDocText] = useState('');
+  const [uploadedDoc, setUploadedDoc] = useState<BlDocument | null>(null);
+  const [docError, setDocError] = useState<string | null>(null);
+  const [docMatch, setDocMatch] = useState<boolean | null>(null);
 
   const connection = getConnection();
+
+  const hashIsZero = !!blState && isZeroHash(blState.preIssuanceHash);
+
+  // Farklı bir mint açılınca belge-doğrulama state'i kalmasın diye (DraftStatus.tsx'te
+  // bulunan aynı hata sınıfı) — mint değişince belge alanı sıfırlanır.
+  useEffect(() => {
+    setDocText('');
+    setUploadedDoc(null);
+    setDocError(null);
+    setDocMatch(null);
+  }, [mint.toBase58()]);
+
+  useEffect(() => {
+    if (!docText.trim() || !blState) {
+      setUploadedDoc(null);
+      setDocMatch(null);
+      setDocError(null);
+      return;
+    }
+    const parsed = parseDocument(docText);
+    if (!parsed) {
+      setUploadedDoc(null);
+      setDocMatch(null);
+      setDocError('Bu metin geçerli bir belge JSON\'u değil (beklenen alanlardan biri eksik/string değil).');
+      return;
+    }
+    setUploadedDoc(parsed);
+    setDocError(null);
+    void canonicalHash(parsed).then((h) => setDocMatch(hashesEqual(h, blState.preIssuanceHash)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [docText, blState?.preIssuanceHash && Array.from(blState.preIssuanceHash).join(',')]);
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => setDocText(String(reader.result ?? ''));
+    reader.readAsText(file);
+  };
 
   const refresh = async () => {
     try {
@@ -205,6 +269,52 @@ const BlStatus: React.FC<BlStatusProps> = ({ mint, wallet, onClose }) => {
             <dt>Senin kapasiten</dt>
             <dd>{capacityLabel}</dd>
           </dl>
+        )}
+
+        {blState && (
+          <>
+            <h3 className="form-section-label">Belge doğrulama</h3>
+            {hashIsZero ? (
+              <p className="empty-state">Bu B/L'ye belge bağlanmamış (eski kayıt) — doğrulanacak hash yok.</p>
+            ) : (
+              <>
+                <p className="form-section-hint">
+                  Eline geçen belgenin carrier'ın bastığı belge olduğunu kendi doğrula — belge
+                  hiçbir zaman zincire yazılmaz, sadece hash'i karşılaştırılır.
+                </p>
+                <input type="file" accept=".json,application/json" onChange={handleFileUpload} />
+                <textarea
+                  rows={4}
+                  placeholder="...ya da belge JSON'unu buraya yapıştır"
+                  value={docText}
+                  onChange={(e) => setDocText(e.target.value)}
+                  style={{ width: '100%', marginTop: 8, fontFamily: 'var(--mono)', fontSize: 12.5 }}
+                />
+                {docError && (
+                  <div className="alert alert-error" role="alert">
+                    {docError}
+                  </div>
+                )}
+                {uploadedDoc && docMatch !== null && (
+                  <>
+                    <div className={`alert ${docMatch ? 'alert-success' : 'alert-error'}`} role="alert">
+                      {docMatch
+                        ? '✓ Belge zincirdeki B/L ile eşleşiyor.'
+                        : '✗ Bu belge bu B/L\'ye ait değil — hash eşleşmiyor.'}
+                    </div>
+                    <dl className="status-grid">
+                      {DOCUMENT_FIELDS.map((field) => (
+                        <React.Fragment key={field}>
+                          <dt>{FIELD_LABELS[field]}</dt>
+                          <dd>{uploadedDoc[field]}</dd>
+                        </React.Fragment>
+                      ))}
+                    </dl>
+                  </>
+                )}
+              </>
+            )}
+          </>
         )}
 
         {canEndorse && (
