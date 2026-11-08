@@ -1,0 +1,15 @@
+{
+  "name": "Bill of Lading",
+  "symbol": "BL",
+  "description": "A bill of lading, tokenized as a single-ownership NFT on Solana. The actual document content is never written on-chain — only its hash is. See https://github.com/ekacin/Logistics-bl-nft",
+  "image": "https://raw.githubusercontent.com/ekacin/Logistics-bl-nft/main/assets/bl-icon.svg",
+  "properties": {
+    "category": "image",
+    "files": [
+      {
+        "uri": "https://raw.githubusercontent.com/ekacin/Logistics-bl-nft/main/assets/bl-icon.svg",
+        "type": "image/svg+xml"
+      }
+    ]
+  }
+}
