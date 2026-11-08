@@ -13,6 +13,27 @@ import {
   watchDraft,
   type WalletLike,
 } from '../chain';
+import { type BlDocument, DOCUMENT_FIELDS, canonicalHash, hashesEqual, isZeroHash, parseDocument } from '../document';
+
+const FIELD_LABELS: Record<keyof BlDocument, string> = {
+  document_id: 'Belge ID',
+  date_of_issue: 'Düzenleme tarihi',
+  place_of_issue: 'Düzenleme yeri',
+  shipper: 'Shipper (ad/adres)',
+  consignee: 'Consignee (alıcı, ad/adres)',
+  notify_party: 'Notify party',
+  vessel: 'Gemi adı',
+  voyage_no: 'Sefer no',
+  port_of_loading: 'Yükleme limanı',
+  port_of_discharge: 'Boşaltma limanı',
+  marks_and_numbers: 'İşaret ve numaralar',
+  number_of_packages: 'Koli/paket sayısı',
+  description_of_goods: 'Eşya tanımı',
+  gross_weight: 'Brüt ağırlık',
+  measurement: 'Hacim',
+  freight_terms: 'Navlun şartı',
+  number_of_originals: 'Orijinal nüsha sayısı',
+};
 
 interface DraftStatusProps {
   wallet: WalletState;
@@ -35,8 +56,54 @@ const DraftStatus: React.FC<DraftStatusProps> = ({ wallet, onIssued }) => {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [resultingBl, setResultingBl] = useState<BlState | null>(null);
+  const [docText, setDocText] = useState('');
+  const [uploadedDoc, setUploadedDoc] = useState<BlDocument | null>(null);
+  const [docError, setDocError] = useState<string | null>(null);
+  const [docMatch, setDocMatch] = useState<boolean | null>(null);
 
   const connection = getConnection();
+
+  const hashIsZero = !!draftState && isZeroHash(draftState.contentHash);
+
+  // Farklı bir draft adresi açılınca (Back → yeni adres → Open) önceki belge state'i
+  // kalıyordu — canlı testte bulunan hata: yanlış taslağa karşı "eşleşiyor" gibi
+  // görünebilirdi. Draft değişince belge alanı sıfırlanır.
+  useEffect(() => {
+    setDocText('');
+    setUploadedDoc(null);
+    setDocError(null);
+    setDocMatch(null);
+  }, [draft?.toBase58()]);
+
+  // Belge yapıştırılınca/yüklenince ayrıştır, hash'ini hesapla, draft.content_hash ile
+  // karşılaştır — belge hiç zincire gitmiyor, sadece bu karşılaştırma tarayıcıda olur.
+  useEffect(() => {
+    if (!docText.trim() || !draftState) {
+      setUploadedDoc(null);
+      setDocMatch(null);
+      setDocError(null);
+      return;
+    }
+    const parsed = parseDocument(docText);
+    if (!parsed) {
+      setUploadedDoc(null);
+      setDocMatch(null);
+      setDocError('Bu metin geçerli bir belge JSON\'u değil (beklenen alanlardan biri eksik/string değil).');
+      return;
+    }
+    setUploadedDoc(parsed);
+    setDocError(null);
+    void canonicalHash(parsed).then((h) => setDocMatch(hashesEqual(h, draftState.contentHash)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [docText, draftState?.contentHash && Array.from(draftState.contentHash).join(',')]);
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => setDocText(String(reader.result ?? ''));
+    reader.readAsText(file);
+  };
 
   useEffect(() => {
     if (!draft) return;
@@ -80,7 +147,7 @@ const DraftStatus: React.FC<DraftStatusProps> = ({ wallet, onIssued }) => {
 
   const isShipper = !!wallet.publicKey && !!draftState && wallet.publicKey.equals(draftState.shipper);
   const isCarrier = !!wallet.publicKey && !!draftState && wallet.publicKey.equals(draftState.carrier);
-  const canApprove = isShipper && draftState?.status === 'draft';
+  const canApprove = isShipper && draftState?.status === 'draft' && (hashIsZero || docMatch === true);
   const canCancel = isCarrier && draftState?.status === 'draft';
   const canIssue = isCarrier && draftState?.status === 'approved';
 
@@ -169,7 +236,14 @@ const DraftStatus: React.FC<DraftStatusProps> = ({ wallet, onIssued }) => {
 
   return (
     <div>
-      <button type="button" className="btn btn-ghost btn-sm" onClick={() => setDraft(null)}>
+      <button
+        type="button"
+        className="btn btn-ghost btn-sm"
+        onClick={() => {
+          setDraft(null);
+          setInput('');
+        }}
+      >
         ← Back
       </button>
       <h2 className="section-title">Draft status</h2>
@@ -210,6 +284,55 @@ const DraftStatus: React.FC<DraftStatusProps> = ({ wallet, onIssued }) => {
             <dt>Senin kapasiten</dt>
             <dd>{capacityLabel}</dd>
           </dl>
+        )}
+
+        {draftState?.status === 'draft' && (
+          <>
+            <h3 className="form-section-label">Belge</h3>
+            {hashIsZero ? (
+              <p className="empty-state">Bu taslağa belge bağlanmamış (eski kayıt) — onay için belge gerekmiyor.</p>
+            ) : (
+              <>
+                {/* Doğrulama herkese açık (salt okunur, imza gerektirmez) — sadece
+                    Onayla butonu isShipper+docMatch'e kilitli. Carrier/denetleyen
+                    biri de göndermeden önce aynı belgeyi kontrol edebilsin. */}
+                <p className="form-section-hint">
+                  Carrier'ın zincir dışında (e-posta vb.) ilettiği belgeyi yükle ya da yapıştır —
+                  onaylamadan önce zincirdeki hash ile eşleştiğini doğrula.
+                </p>
+                <input type="file" accept=".json,application/json" onChange={handleFileUpload} />
+                <textarea
+                  rows={4}
+                  placeholder="...ya da belge JSON'unu buraya yapıştır"
+                  value={docText}
+                  onChange={(e) => setDocText(e.target.value)}
+                  style={{ width: '100%', marginTop: 8, fontFamily: 'var(--mono)', fontSize: 12.5 }}
+                />
+                {docError && (
+                  <div className="alert alert-error" role="alert">
+                    {docError}
+                  </div>
+                )}
+                {uploadedDoc && docMatch !== null && (
+                  <>
+                    <div className={`alert ${docMatch ? 'alert-success' : 'alert-error'}`} role="alert">
+                      {docMatch
+                        ? '✓ Belge zincirdeki taslakla eşleşiyor.'
+                        : '✗ Bu belge bu taslağa ait değil — hash eşleşmiyor.'}
+                    </div>
+                    <dl className="status-grid">
+                      {DOCUMENT_FIELDS.map((field) => (
+                        <React.Fragment key={field}>
+                          <dt>{FIELD_LABELS[field]}</dt>
+                          <dd>{uploadedDoc[field]}</dd>
+                        </React.Fragment>
+                      ))}
+                    </dl>
+                  </>
+                )}
+              </>
+            )}
+          </>
         )}
 
         {canApprove && (

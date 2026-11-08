@@ -350,6 +350,11 @@ code {
   color: var(--warn);
 }
 
+.alert-success {
+  background: var(--success-bg);
+  color: var(--success);
+}
+
 /* ---- Cards / sections ---- */
 
 .section-title {
